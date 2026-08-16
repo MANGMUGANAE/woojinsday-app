@@ -30,6 +30,13 @@ internal fun haversineMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Dou
     return EARTH_RADIUS_M * 2 * atan2(sqrt(a), sqrt(1 - a))
 }
 
+/** 손으로 그린 길의 끝점이 실제로 이어지는 다른 길과 좌표가 딱 안 맞아 끊겨 보일 때(예:
+ *  geojson.io에서 교차점을 찍었는데 기존 점과 미세하게 어긋난 경우), 막다른 끝점을 이 거리
+ *  이내의 가장 가까운 다른 노드에 자동으로 이어붙인다. 도보 경로 규모(캠퍼스 내 좁은 길들)에서
+ *  이 정도 오차는 "사실상 같은 지점"으로 보는 게 합리적이라 판단한 값 — 그렇다고 너무 크면
+ *  실제로는 안 이어진 별개의 막다른 길끼리 잘못 붙어버릴 수 있어 5m로 제한한다. */
+private const val DEAD_END_SNAP_METERS = 5.0
+
 /** 소수 7자리로 반올림한 "lat,lng" 문자열을 그래프 노드 키로 쓴다 — OSM은 같은 지점을 공유하는
  *  길들이 정확히 같은 좌표를 참조하므로, 반올림 정도만 맞추면 별도 스냅 로직 없이 자연히 이어진다. */
 private fun nodeKey(lat: Double, lng: Double): String {
@@ -182,7 +189,39 @@ class CampusRouteEngine private constructor(
                 }
             }
 
+            snapDeadEnds(adjacency, nodeCoords, ::addEdge)
+
             return CampusRouteEngine(adjacency, nodeCoords)
+        }
+
+        /** degree 1(막다른 끝)인 노드마다 [DEAD_END_SNAP_METERS] 이내에서 아직 안 이어진 가장
+         *  가까운 노드를 찾아 연결한다. 처리 도중 [adjacency]가 바뀌므로 매번 최신 상태로
+         *  "이미 이어졌는지"를 확인해서, 서로가 서로의 가장 가까운 짝인 경우에도 간선이
+         *  중복으로 안 생긴다. */
+        private fun snapDeadEnds(
+            adjacency: MutableMap<String, MutableList<Edge>>,
+            nodeCoords: Map<String, Pair<Double, Double>>,
+            addEdge: (Double, Double, Double, Double, Boolean) -> Unit
+        ) {
+            val deadEnds = adjacency.filterValues { it.size == 1 }.keys.toList()
+            for (key in deadEnds) {
+                val (lat, lng) = nodeCoords.getValue(key)
+                var bestKey: String? = null
+                var bestDist = DEAD_END_SNAP_METERS
+                for ((otherKey, otherCoord) in nodeCoords) {
+                    if (otherKey == key) continue
+                    if (adjacency[key]?.any { it.toKey == otherKey } == true) continue
+                    val d = haversineMeters(lat, lng, otherCoord.first, otherCoord.second)
+                    if (d < bestDist) {
+                        bestDist = d
+                        bestKey = otherKey
+                    }
+                }
+                bestKey?.let {
+                    val (otherLat, otherLng) = nodeCoords.getValue(it)
+                    addEdge(lat, lng, otherLat, otherLng, false)
+                }
+            }
         }
     }
 }

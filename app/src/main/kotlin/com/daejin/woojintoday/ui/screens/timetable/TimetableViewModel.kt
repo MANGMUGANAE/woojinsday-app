@@ -13,6 +13,7 @@ import com.daejin.woojintoday.data.EditingTimetableStore
 import com.daejin.woojintoday.data.LectureNotificationStore
 import com.daejin.woojintoday.data.SavedTimetableStore
 import com.daejin.woojintoday.data.SessionStore
+import com.daejin.woojintoday.data.StudentProfileStore
 import com.daejin.woojintoday.data.SyllabusIndexStore
 import com.daejin.woojintoday.data.model.AcademicPeriod
 import com.daejin.woojintoday.data.model.Course
@@ -23,14 +24,19 @@ import com.daejin.woojintoday.data.model.TimeRangeFilter
 import com.daejin.woojintoday.data.model.TimeRegion
 import com.daejin.woojintoday.data.model.Weekday
 import com.daejin.woojintoday.data.model.mergeRegionsIfPossible
+import com.daejin.woojintoday.data.network.AcademicTranscriptClient
+import com.daejin.woojintoday.data.network.AcademicTranscriptResult
 import com.daejin.woojintoday.data.network.CourseCatalogClient
 import com.daejin.woojintoday.data.network.CourseCatalogResult
 import com.daejin.woojintoday.data.network.DaejinSession
 import com.daejin.woojintoday.data.network.MyTimetableClient
 import com.daejin.woojintoday.data.network.MyTimetableResult
+import com.daejin.woojintoday.data.network.StudentProfile
 import com.daejin.woojintoday.data.network.SyllabusClient
 import com.daejin.woojintoday.schedule.LectureAlarmScheduler
 import kotlinx.coroutines.launch
+
+private const val TAG = "TimetableViewModel"
 
 class TimetableViewModel(
     private val sessionStore: SessionStore,
@@ -41,9 +47,11 @@ class TimetableViewModel(
     private val syllabusIndexStore: SyllabusIndexStore,
     private val lectureNotificationStore: LectureNotificationStore,
     private val lectureAlarmScheduler: LectureAlarmScheduler,
+    private val studentProfileStore: StudentProfileStore,
     private val catalogClient: CourseCatalogClient = CourseCatalogClient(),
     private val syllabusClient: SyllabusClient = SyllabusClient(),
-    private val myTimetableClient: MyTimetableClient = MyTimetableClient()
+    private val myTimetableClient: MyTimetableClient = MyTimetableClient(),
+    private val transcriptClient: AcademicTranscriptClient = AcademicTranscriptClient()
 ) : ViewModel() {
 
     private val currentPeriod = AcademicPeriod.current()
@@ -250,6 +258,13 @@ class TimetableViewModel(
         updateSelectedKeys(selectedCourseKeys - course.courseKey)
     }
 
+    /** "AI로 시간표 짜기" 결과 화면에서 하나를 골라 완료를 눌렀을 때 — 지금 편집 중인 시간표를
+     *  그 조합으로 통째로 교체한다. */
+    fun applyGeneratedTimetable(courses: List<Course>) {
+        courses.forEach { courseCache[it.courseKey] = it }
+        updateSelectedKeys(courses.map { it.courseKey }.toSet())
+    }
+
     /** 시간표 그리드 쪽을 탭하면 미리보기 중이던 과목을 취소한다. */
     fun cancelPreview() {
         previewCourseKey = null
@@ -370,6 +385,36 @@ class TimetableViewModel(
         savedTimetableStore.save(name, selectedCourses, year, semester)
     }
 
+    /** AI 시간표 생성 위저드에서 "내 학년" 필터링에 쓸 로컬 저장 학생 정보. */
+    fun studentProfile(): StudentProfile? = studentProfileStore.get()
+
+    /** AI 시간표 생성 전 먼저 호출 — 이수구분표에서 이미 수강한 과목명을 뽑아온다(과목 제외용).
+     *  실패하거나 로그인 정보가 없으면 빈 집합을 돌려주고, 그 경우 생성 시 제외 없이 진행된다. */
+    suspend fun fetchCompletedCourseNames(): Set<String> {
+        val userId2 = credentialStore.userId2() ?: return emptySet()
+        return when (val result = transcriptClient.fetchCompletedCourseNames(userId2)) {
+            is AcademicTranscriptResult.Success -> result.completedCourseNames
+            is AcademicTranscriptResult.NetworkError -> emptySet()
+        }
+    }
+
+    /** AI 시간표 생성에 쓸 "과목코드-분반 → 학과명" 인덱스 — 캡스톤디자인이 내 학과 것인지, 이미
+     *  이수한 전공과목인지(같은 학과 + 같은 이름이어야 같은 과목) 판별하는 데 쓰인다. 강의계획서
+     *  조회로 이미 만들어둔 캐시가 있으면 그대로 쓰고, 없으면 이번에 처음 만든다(학기당 한 번,
+     *  이후 재사용 — [SyllabusViewModel.load]와 같은 캐시-우선 패턴). */
+    suspend fun ensureCourseDepartments(): Map<String, String> {
+        syllabusIndexStore.getDepartments(year, semester)?.let {
+            android.util.Log.d(TAG, "학과 인덱스 캐시 사용, size=${it.size}, 내 학과=${studentProfileStore.get()?.department}")
+            return it
+        }
+        val session = DaejinSession(wmonid = sessionStore.wmonid(), jsessionId = sessionStore.jsessionId())
+        if (session.jsessionId == null) return emptyMap()
+        val built = syllabusClient.buildIndex(year, semester, session) { _, _ -> }
+        syllabusIndexStore.save(year, semester, built.links, built.departments)
+        android.util.Log.d(TAG, "학과 인덱스 새로 빌드, size=${built.departments.size}, 내 학과=${studentProfileStore.get()?.department}")
+        return built.departments
+    }
+
     fun savedTimetables(): List<SavedTimetable> = savedTimetableStore.getAll()
 
     fun deleteSavedTimetable(id: String) {
@@ -475,7 +520,8 @@ class TimetableViewModel(
                 editingCoursesStore = EditingCoursesStore(context),
                 syllabusIndexStore = SyllabusIndexStore(context),
                 lectureNotificationStore = LectureNotificationStore(context),
-                lectureAlarmScheduler = LectureAlarmScheduler(context)
+                lectureAlarmScheduler = LectureAlarmScheduler(context),
+                studentProfileStore = StudentProfileStore(context)
             ) as T
         }
     }

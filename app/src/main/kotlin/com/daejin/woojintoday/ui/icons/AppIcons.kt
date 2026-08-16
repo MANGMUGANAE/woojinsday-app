@@ -7,10 +7,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.daejin.woojintoday.ui.theme.AccentBlue
+import com.daejin.woojintoday.ui.theme.AccentBlueDeep
 
 /**
  * Flat, single-color, stroke-based vector icons. No emoji, no gradients —
@@ -497,6 +500,33 @@ fun IconFilter(tint: Color, modifier: Modifier = Modifier, size: androidx.compos
             )
             drawCircle(color = tint, radius = w * 0.12f, center = Offset(w * knobX[index], h * yFraction))
         }
+    }
+}
+
+/** 4갈래 반짝임(sparkle) — Gemini류 "AI" 버튼에 흔히 쓰는 모양. 파란 그라데이션 고정이라 다른
+ *  아이콘들과 달리 tint 파라미터를 받지 않는다("AI" 자체를 나타내는 고정 마크라는 의미). */
+@Composable
+fun IconSparkle(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 20.dp) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val center = Offset(w * 0.5f, h * 0.5f)
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, h * 0.02f)
+            quadraticTo(center.x, center.y, w * 0.98f, h * 0.5f)
+            quadraticTo(center.x, center.y, w * 0.5f, h * 0.98f)
+            quadraticTo(center.x, center.y, w * 0.02f, h * 0.5f)
+            quadraticTo(center.x, center.y, w * 0.5f, h * 0.02f)
+            close()
+        }
+        drawPath(
+            path,
+            brush = Brush.linearGradient(
+                colors = listOf(AccentBlue, AccentBlueDeep),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+        )
     }
 }
 

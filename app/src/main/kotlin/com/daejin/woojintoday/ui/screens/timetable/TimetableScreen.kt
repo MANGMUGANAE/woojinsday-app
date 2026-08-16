@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,15 +29,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.daejin.woojintoday.data.model.AcademicPeriod
 import com.daejin.woojintoday.data.model.Course
 import com.daejin.woojintoday.ui.components.ToastHost
 import com.daejin.woojintoday.ui.components.WheelPicker
@@ -44,6 +48,7 @@ import com.daejin.woojintoday.ui.components.rememberToastState
 import com.daejin.woojintoday.ui.components.wheelRange
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.icons.IconList
+import com.daejin.woojintoday.ui.icons.IconSparkle
 import com.daejin.woojintoday.ui.theme.Background
 import com.daejin.woojintoday.ui.theme.Border
 import com.daejin.woojintoday.ui.theme.ErrorRed
@@ -54,6 +59,7 @@ import com.daejin.woojintoday.ui.theme.TextDisabled
 import com.daejin.woojintoday.ui.theme.TextPrimary
 import com.daejin.woojintoday.ui.theme.TextSecondary
 import com.daejin.woojintoday.ui.theme.TimetablePalette
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +73,17 @@ fun TimetableScreen(onBack: () -> Unit) {
     var showListDialog by remember { mutableStateOf(false) }
     var showLoadTimetableConfirm by remember { mutableStateOf(false) }
     var showNotificationMinutesDialog by remember { mutableStateOf(false) }
+    var showAiTimetableDialog by remember { mutableStateOf(false) }
+    var isPreparingAiTimetable by remember { mutableStateOf(false) }
+    // AI 아이콘을 누른 시점에 이수구분표를 먼저 조회해 이미 들은 과목명을 뽑아둔다(생성 시 제외용).
+    var aiExcludedCourseNames by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // 과목코드-분반 → 학과명 — 캡스톤디자인 자기 학과 판별, 전공과목 중복 이수 판별(학과+이름 일치)에 쓰인다.
+    var aiCourseDepartments by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val coroutineScope = rememberCoroutineScope()
+    // "AI로 시간표 짜기"는 가장 최신(현재) 학기에서만 지원 — 지난 학기는 이미 수강신청이 끝나
+    // 조합을 새로 짤 이유가 없으니 비활성화한다.
+    val (currentYear, currentSemester) = remember { AcademicPeriod.current() }
+    val isCurrentPeriod = viewModel.year == currentYear && viewModel.semester == currentSemester
 
     val selectedCourses = viewModel.selectedCourses
     // 색상은 담긴 "순서"(selectedCourseKeys, 담을 때마다 뒤에 추가됨)로 고정한다 — 카탈로그 목록 순서로
@@ -150,6 +167,23 @@ fun TimetableScreen(onBack: () -> Unit) {
                 toastState.show("\"${timetable.name}\" 시간표를 불러왔습니다.")
             },
             onDismiss = { showListDialog = false }
+        )
+    }
+
+    if (showAiTimetableDialog) {
+        AiTimetableDialog(
+            courses = viewModel.courses,
+            year = viewModel.year,
+            semester = viewModel.semester,
+            excludedCourseNames = aiExcludedCourseNames,
+            studentGrade = viewModel.studentProfile()?.grade,
+            studentDepartment = viewModel.studentProfile()?.department,
+            courseDepartments = aiCourseDepartments,
+            onDismiss = { showAiTimetableDialog = false },
+            onApply = { generated ->
+                viewModel.applyGeneratedTimetable(generated)
+                toastState.show("AI가 짜준 시간표를 적용했어요!")
+            }
         )
     }
 
@@ -283,24 +317,46 @@ fun TimetableScreen(onBack: () -> Unit) {
             }
 
             val (timedCourses, onlineCourses) = selectedCourses.partition { it.sessions.isNotEmpty() }
-            WeeklyTimetable(
-                courses = timedCourses,
-                colorFor = colorFor,
-                onCourseClick = { course -> detailCourse = course },
-                onCourseRemove = viewModel::removeCourse,
-                onGridTap = viewModel::cancelPreview,
-                previewCourse = previewCourse?.takeIf { it.sessions.isNotEmpty() },
-                previewColor = previewColor,
-                regions = viewModel.filters.regions,
-                onRegionUpdate = viewModel::setRegionAt,
-                onRegionCreate = viewModel::appendRegion,
-                onRegionFinalize = viewModel::finalizeRegions,
-                showCurrentTimeIndicator = viewModel.notificationsEnabled,
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-            )
+            ) {
+                WeeklyTimetable(
+                    courses = timedCourses,
+                    colorFor = colorFor,
+                    onCourseClick = { course -> detailCourse = course },
+                    onCourseRemove = viewModel::removeCourse,
+                    onGridTap = viewModel::cancelPreview,
+                    previewCourse = previewCourse?.takeIf { it.sessions.isNotEmpty() },
+                    previewColor = previewColor,
+                    regions = viewModel.filters.regions,
+                    onRegionUpdate = viewModel::setRegionAt,
+                    onRegionCreate = viewModel::appendRegion,
+                    onRegionFinalize = viewModel::finalizeRegions,
+                    showCurrentTimeIndicator = viewModel.notificationsEnabled,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-4).dp, y = 16.dp)
+                        .alpha(if (!isCurrentPeriod) 0.4f else if (viewModel.isLoading || isPreparingAiTimetable) 0.5f else 1f)
+                        .clickable(enabled = isCurrentPeriod && !viewModel.isLoading && !isPreparingAiTimetable) {
+                            coroutineScope.launch {
+                                isPreparingAiTimetable = true
+                                aiExcludedCourseNames = viewModel.fetchCompletedCourseNames()
+                                aiCourseDepartments = viewModel.ensureCourseDepartments()
+                                isPreparingAiTimetable = false
+                                showAiTimetableDialog = true
+                            }
+                        }
+                        .padding(4.dp)
+                ) {
+                    IconSparkle(size = 26.dp)
+                }
+            }
             if (onlineCourses.isNotEmpty()) {
                 OnlineCourseStack(
                     courses = onlineCourses,

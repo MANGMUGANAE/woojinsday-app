@@ -274,6 +274,7 @@ private fun <T> MultiSelectDropdown(
 }
 
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 private fun TimeRangeControl(range: TimeRangeFilter?, onChange: (TimeRangeFilter?) -> Unit) {
     val start = range?.startMinutes ?: TIME_MIN
     val end = range?.endMinutes ?: TIME_MAX
@@ -293,7 +294,8 @@ private fun TimeRangeControl(range: TimeRangeFilter?, onChange: (TimeRangeFilter
             valueRange = TIME_MIN.toFloat()..TIME_MAX.toFloat(),
             steps = (TIME_MAX - TIME_MIN) / TIME_STEP - 1,
             modifier = Modifier.weight(1f).height(24.dp),
-            // steps가 많아(30분 단위) 눈금 점이 촘촘히 찍히면 지저분해 보여서 눈금 표시만 끈다
+            // steps가 많아(30분 단위) 눈금 점이 촘촘히 찍히면 지저분해 보여서 중간 눈금은 투명 처리하고,
+            // Material3가 트랙 양 끝에 따로 그리는 "정지 표시" 점은 트랙을 직접 지정해 아예 뺀다
             // (값을 정해진 간격으로 스냅하는 동작 자체는 steps로 그대로 유지됨).
             colors = SliderDefaults.colors(
                 thumbColor = Primary,
@@ -301,7 +303,20 @@ private fun TimeRangeControl(range: TimeRangeFilter?, onChange: (TimeRangeFilter
                 inactiveTrackColor = Border,
                 activeTickColor = Color.Transparent,
                 inactiveTickColor = Color.Transparent
-            )
+            ),
+            track = { rangeSliderState ->
+                SliderDefaults.Track(
+                    rangeSliderState = rangeSliderState,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Primary,
+                        activeTrackColor = Primary,
+                        inactiveTrackColor = Border,
+                        activeTickColor = Color.Transparent,
+                        inactiveTickColor = Color.Transparent
+                    ),
+                    drawStopIndicator = null
+                )
+            }
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(

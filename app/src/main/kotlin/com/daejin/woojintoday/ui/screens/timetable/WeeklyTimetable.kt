@@ -55,8 +55,10 @@ import com.daejin.woojintoday.data.model.TimeRangeFilter
 import com.daejin.woojintoday.data.model.TimeRegion
 import com.daejin.woojintoday.data.model.Weekday
 import com.daejin.woojintoday.ui.icons.IconClose
+import com.daejin.woojintoday.ui.icons.IconLock
 import com.daejin.woojintoday.ui.theme.AccentBlue
 import com.daejin.woojintoday.ui.theme.Border
+import com.daejin.woojintoday.ui.theme.ErrorRed
 import com.daejin.woojintoday.ui.theme.OnPrimary
 import com.daejin.woojintoday.ui.theme.TextPrimary
 import com.daejin.woojintoday.ui.theme.TextSecondary
@@ -148,6 +150,9 @@ fun WeeklyTimetable(
     onRegionCreate: (TimeRegion) -> Int,
     onRegionFinalize: () -> Unit,
     showCurrentTimeIndicator: Boolean = false,
+    showRemoveButton: Boolean = true,
+    lockedCourseKeys: Set<String> = emptySet(),
+    onToggleLock: ((Course) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val sessionEntries = remember(courses) {
@@ -444,7 +449,10 @@ fun WeeklyTimetable(
                                 dayIndex = dayIndex,
                                 dayWidth = dayWidth,
                                 onClick = { onCourseClick(course) },
-                                onRemove = { onCourseRemove(course) }
+                                onRemove = { onCourseRemove(course) },
+                                showRemoveButton = showRemoveButton,
+                                isLocked = course.courseKey in lockedCourseKeys,
+                                onToggleLock = onToggleLock?.let { callback -> { callback(course) } }
                             )
                         }
 
@@ -558,7 +566,10 @@ private fun CourseBlock(
     dayIndex: Int,
     dayWidth: Dp,
     onClick: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    showRemoveButton: Boolean = true,
+    isLocked: Boolean = false,
+    onToggleLock: (() -> Unit)? = null
 ) {
     val top = HOUR_HEIGHT * ((session.startMinutes - hourRangeStartMinutes) / 60f)
     val height = HOUR_HEIGHT * ((session.endMinutes - session.startMinutes) / 60f)
@@ -589,16 +600,31 @@ private fun CourseBlock(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(2.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.28f))
-                .clickable(onClick = onRemove)
-                .padding(3.dp)
-        ) {
-            IconClose(tint = OnPrimary, size = 9.dp)
+        if (showRemoveButton) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(2.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.28f))
+                    .clickable(onClick = onRemove)
+                    .padding(3.dp)
+            ) {
+                IconClose(tint = OnPrimary, size = 9.dp)
+            }
+        }
+        if (onToggleLock != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(2.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.28f))
+                    .clickable(onClick = onToggleLock)
+                    .padding(start = 3.dp, end = 3.dp, top = 1.dp, bottom = 3.dp)
+            ) {
+                IconLock(tint = if (isLocked) ErrorRed else OnPrimary, size = 9.dp)
+            }
         }
     }
 }

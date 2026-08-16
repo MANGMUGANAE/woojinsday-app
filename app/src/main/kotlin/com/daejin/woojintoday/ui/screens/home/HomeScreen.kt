@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.daejin.woojintoday.R
 import com.daejin.woojintoday.data.CredentialStore
+import com.daejin.woojintoday.data.NoticeSection
 import com.daejin.woojintoday.data.SessionStore
 import com.daejin.woojintoday.ui.components.BannerAdView
 import com.daejin.woojintoday.ui.icons.IconCalendar
@@ -74,13 +76,36 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun HomeScreen(onOpenTimetable: () -> Unit, onLogout: () -> Unit) {
+fun HomeScreen(
+    onOpenTimetable: () -> Unit,
+    onLogout: () -> Unit,
+    deepLinkNoticeSection: NoticeSection? = null,
+    onDeepLinkNoticeConsumed: () -> Unit = {},
+    deepLinkOpenCalendar: Boolean = false,
+    onDeepLinkCalendarConsumed: () -> Unit = {}
+) {
     val context = LocalContext.current
     var showNoticeDialog by remember { mutableStateOf(false) }
+    // onDeepLinkNoticeConsumed()가 호출되면 상위(MainActivity)에서 deepLinkNoticeSection을
+    // 바로 null로 되돌리므로, 다이얼로그를 열 때 쓸 섹션값을 로컬 상태로 옮겨 담아 잃어버리지 않게 한다.
+    var noticeDialogInitialSection by remember { mutableStateOf<NoticeSection?>(null) }
+    LaunchedEffect(deepLinkNoticeSection) {
+        if (deepLinkNoticeSection != null) {
+            noticeDialogInitialSection = deepLinkNoticeSection
+            showNoticeDialog = true
+            onDeepLinkNoticeConsumed()
+        }
+    }
     var showRankDialog by remember { mutableStateOf(false) }
     var showLogoutMenu by remember { mutableStateOf(false) }
     var showFeatureListDialog by remember { mutableStateOf(false) }
     var showCalendarDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(deepLinkOpenCalendar) {
+        if (deepLinkOpenCalendar) {
+            showCalendarDialog = true
+            onDeepLinkCalendarConsumed()
+        }
+    }
     var showMealDialog by remember { mutableStateOf(false) }
     var showCampusWalkDialog by remember { mutableStateOf(false) }
     var showMileageStatusDialog by remember { mutableStateOf(false) }
@@ -98,7 +123,7 @@ fun HomeScreen(onOpenTimetable: () -> Unit, onLogout: () -> Unit) {
     }
 
     if (showNoticeDialog) {
-        NoticeBoardDialog(onDismiss = { showNoticeDialog = false })
+        NoticeBoardDialog(onDismiss = { showNoticeDialog = false }, initialSection = noticeDialogInitialSection)
     }
     if (showMileageStatusDialog) {
         MileageStatusDialog(onDismiss = { showMileageStatusDialog = false })

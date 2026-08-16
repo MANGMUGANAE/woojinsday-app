@@ -15,7 +15,7 @@ class NoticeWatchStore(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun isEnabled(section: NoticeSection): Boolean = prefs.getBoolean(enabledKey(section), false)
+    fun isEnabled(section: NoticeSection): Boolean = prefs.getBoolean(enabledKey(section), true)
 
     fun setEnabled(section: NoticeSection, enabled: Boolean) {
         prefs.edit().putBoolean(enabledKey(section), enabled).apply()

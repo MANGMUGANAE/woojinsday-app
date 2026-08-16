@@ -77,7 +77,7 @@ import com.daejin.woojintoday.ui.theme.TextSecondary
  *  토글이 있어 켜두면 매일 저녁 6시에 새 글이 있는지 검사해 알림을 준다. 글을 누르면 같은 상세
  *  WebView로 전환된다(뒤로가기 한 번에 목록으로). */
 @Composable
-fun NoticeBoardDialog(onDismiss: () -> Unit) {
+fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = null) {
     val context = LocalContext.current
     val lectureTimetableViewModel: LectureTimetableNoticeViewModel =
         viewModel(factory = LectureTimetableNoticeViewModel.Factory(context))
@@ -97,9 +97,10 @@ fun NoticeBoardDialog(onDismiss: () -> Unit) {
         selectedPath = null
     }
 
-    var academicExpanded by remember { mutableStateOf(true) }
-    var lectureExpanded by remember { mutableStateOf(false) }
-    var mileageExpanded by remember { mutableStateOf(false) }
+    // 딥링크로 특정 섹션(알림이 온 섹션)이 지정돼 들어왔으면 그 섹션만 펼친 채로 시작한다.
+    var academicExpanded by remember { mutableStateOf(initialSection == null || initialSection == NoticeSection.ACADEMIC) }
+    var lectureExpanded by remember { mutableStateOf(initialSection == NoticeSection.LECTURE_TIMETABLE) }
+    var mileageExpanded by remember { mutableStateOf(initialSection == NoticeSection.MILEAGE) }
 
     var academicWatch by remember { mutableStateOf(noticeWatchStore.isEnabled(NoticeSection.ACADEMIC)) }
     var lectureWatch by remember { mutableStateOf(noticeWatchStore.isEnabled(NoticeSection.LECTURE_TIMETABLE)) }

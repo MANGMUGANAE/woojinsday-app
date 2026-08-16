@@ -164,6 +164,12 @@ class TimetableViewModel(
         selectedCourseKeys = editingTimetableStore.get(year, semester)
         selectedCourseKeysByPeriod[currentPeriodKey()] = selectedCourseKeys
         preloadCourseCache(year, semester)
+        // "강의시간 알림"이 기본으로 켜져있는데(LectureNotificationStore.isEnabled 기본값 true),
+        // 알람은 시간표를 편집할 때만 다시 걸린다 — 이미 담아둔 시간표가 있는 채로 화면을 열었을
+        // 때도 확실히 걸리도록 여기서도 한 번 걸어준다(이미 걸려있어도 재예약은 덮어쓸 뿐이라 안전).
+        if (notificationsEnabled) {
+            lectureAlarmScheduler.scheduleAll(selectedCourses, notificationMinutesBefore)
+        }
         load()
         ensureGenEdAreaIndex()
     }

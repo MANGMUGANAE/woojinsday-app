@@ -3,13 +3,18 @@ package com.daejin.woojintoday.notification
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.daejin.woojintoday.DeepLink
+import com.daejin.woojintoday.MainActivity
 import com.daejin.woojintoday.R
+import com.daejin.woojintoday.data.NoticeSection
 
 /** 공지사항 다이얼로그의 섹션별 "글 올라오면 알려드려요" 토글이 켜져 있을 때, 새 글이 올라오면
  *  "[섹션이름] 글 제목" 형태로 알려준다. */
@@ -31,11 +36,21 @@ object NoticeWatchNotifier {
             PackageManager.PERMISSION_GRANTED
     }
 
-    fun notify(context: Context, notificationId: Int, sectionName: String, noticeTitle: String) {
+    fun notify(context: Context, notificationId: Int, section: NoticeSection, noticeTitle: String) {
         if (!hasPermission(context)) return
         ensureChannel(context)
 
-        val title = "[$sectionName] $noticeTitle"
+        val title = "[${section.displayName}] $noticeTitle"
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(DeepLink.EXTRA_TARGET, DeepLink.TARGET_NOTICE)
+                putExtra(DeepLink.EXTRA_NOTICE_SECTION, section.name)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFFFF6A1A.toInt())
@@ -43,6 +58,7 @@ object NoticeWatchNotifier {
             .setStyle(NotificationCompat.BigTextStyle().bigText(title))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(contentIntent)
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)

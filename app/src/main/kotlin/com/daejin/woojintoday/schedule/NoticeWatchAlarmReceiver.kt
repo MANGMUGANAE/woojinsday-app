@@ -56,7 +56,7 @@ class NoticeWatchAlarmReceiver : BroadcastReceiver() {
                         NoticeWatchNotifier.notify(
                             context,
                             notificationId = (section.name + notice.detailPath).hashCode(),
-                            sectionName = section.displayName,
+                            section = section,
                             noticeTitle = notice.title
                         )
                     }

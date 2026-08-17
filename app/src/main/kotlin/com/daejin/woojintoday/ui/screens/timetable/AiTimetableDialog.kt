@@ -142,6 +142,7 @@ fun AiTimetableDialog(
         if (regeneratingPages[page] == true) return
         scope.launch {
             regeneratingPages[page] = true
+            val currentCombo = results.getOrNull(page)?.map { it.courseKey }?.toSet().orEmpty()
             val newCombo = withContext(Dispatchers.Default) {
                 generateTimetables(
                     courses = courses,
@@ -153,7 +154,8 @@ fun AiTimetableDialog(
                     relaxed = false,
                     lockedKeysByPage = mapOf(0 to lockedKeysByPage[page].orEmpty()),
                     count = 1,
-                    seedOffset = kotlin.random.Random.nextInt()
+                    seedOffset = kotlin.random.Random.nextInt(),
+                    initialExcludeCombos = if (currentCombo.isNotEmpty()) listOf(currentCombo) else emptyList()
                 ).firstOrNull()
             }
             if (!newCombo.isNullOrEmpty() && page < results.size) {
@@ -1013,7 +1015,11 @@ private fun generateTimetables(
     count: Int = 3,
     // "다시 주세요"를 반복해서 눌러도 매번 같은 250개 시드로 똑같은 최고점 조합만 나오는 걸
     // 막기 위한 오프셋 — 매 호출마다 다른 값을 주면 다른 표본을 탐색해 다른 결과가 나온다.
-    seedOffset: Int = 0
+    seedOffset: Int = 0,
+    // "다시 주세요"로 재생성할 때, 조건이 빡빡해서 최고점 조합이 매번 우연히 똑같이 나오는 걸
+    // 막기 위해 지금 화면에 떠 있는 조합을 미리 넣어둔다 — 정말 대안이 하나도 없을 때만(조합
+    // 250개를 다 뒤져도 이것뿐일 때만) 결국 같은 조합으로 되돌아온다.
+    initialExcludeCombos: List<Set<String>> = emptyList()
 ): List<List<Course>> {
     val ownGrade = studentGrade?.let(::gradeDigits)?.toIntOrNull()
     val pool = buildPool(courses, excludedCourseNames, studentDepartment, courseDepartments, ownGrade, answers, relaxed)
@@ -1128,13 +1134,23 @@ private fun generateTimetables(
             if (picked.isNotEmpty()) candidates += score(picked) to picked
         }
         val ranked = candidates.sortedByDescending { it.first }
-        return ranked.firstOrNull { (_, picked) -> picked.map { it.courseKey }.toSet() !in excludeCombos }?.second
-            ?: ranked.firstOrNull()?.second
-            ?: emptyList()
+        val seenKeys = mutableSetOf<Set<String>>()
+        val distinctCandidates = ranked.mapNotNull { (_, picked) ->
+            val key = picked.map { it.courseKey }.toSet()
+            if (key in excludeCombos || !seenKeys.add(key)) null else picked
+        }
+        // 매번 무조건 1등만 고르면(특히 "다시 주세요"에서 현재 조합 하나만 제외) 거의 항상 바로
+        // 다음 차선책 하나로만 수렴해서 다양성이 떨어진다 — 점수 상위권 후보 중에서 무작위로
+        // 골라 다시 눌러도 매번 다른 결과가 나오게 한다.
+        return if (distinctCandidates.isNotEmpty()) {
+            distinctCandidates.take(5).random()
+        } else {
+            ranked.firstOrNull()?.second ?: emptyList()
+        }
     }
 
     val results = mutableListOf<List<Course>>()
-    val usedCombos = mutableListOf<Set<String>>()
+    val usedCombos = mutableListOf<Set<String>>().apply { addAll(initialExcludeCombos) }
     for (page in 0 until count) {
         val lockedCourses = courses.filter { it.courseKey in lockedKeysByPage[page].orEmpty() }
         val combo = generateOnePage(lockedCourses, usedCombos)

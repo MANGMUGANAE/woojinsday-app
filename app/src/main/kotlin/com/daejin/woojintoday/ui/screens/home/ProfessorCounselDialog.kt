@@ -1,18 +1,23 @@
 package com.daejin.woojintoday.ui.screens.home
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,6 +79,8 @@ import com.daejin.woojintoday.ui.theme.TextPrimary
 import com.daejin.woojintoday.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
+private enum class ProfessorCounselSection { STATUS, APPLY }
+
 /** "지도교수 상담" 카드 — 내 지도교수님 성함, 졸업까지 채워야 하는 지도교수 상담 인정 횟수(학년·학기별),
  *  그리고 실제 온라인 상담 신청까지 한 화면에서 처리한다. 다른 정보 조회 다이얼로그들과 같은
  *  뒤로가기 화살표 + 스크롤 구조. */
@@ -111,25 +118,31 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                Text(text = "지도교수 상담 현황", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                Spacer(modifier = Modifier.height(12.dp))
-                CounselStatusCard(
-                    status = viewModel.counselStatus,
-                    isLoading = viewModel.isLoadingCounsel,
-                    errorMessage = viewModel.counselErrorMessage,
-                    history = viewModel.counselHistory,
-                    isLoadingHistory = viewModel.isLoadingHistory,
-                    historyErrorMessage = viewModel.historyErrorMessage,
-                    onHistoryEntryClick = { entry -> viewModel.openHistoryDetail(entry.cnsKeyId) }
-                )
+                var selectedSection by remember { mutableStateOf(ProfessorCounselSection.STATUS) }
+                // 신청이 성공하면 어차피 이력이 새로고침되니, 그 결과를 바로 볼 수 있게 현황
+                // 섹션으로 자동으로 넘어간다.
+                LaunchedEffect(viewModel.applySucceeded) {
+                    if (viewModel.applySucceeded) selectedSection = ProfessorCounselSection.STATUS
+                }
+                CounselSectionSwitcher(selected = selectedSection, onSelect = { selectedSection = it })
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Spacer(modifier = Modifier.height(28.dp))
-
-                Text(text = "지도교수 상담 신청하기", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                Spacer(modifier = Modifier.height(12.dp))
-                ProfessorPickerSection(viewModel)
-                Spacer(modifier = Modifier.height(14.dp))
-                ProfessorCounselApplyForm(viewModel)
+                when (selectedSection) {
+                    ProfessorCounselSection.STATUS -> CounselStatusCard(
+                        status = viewModel.counselStatus,
+                        isLoading = viewModel.isLoadingCounsel,
+                        errorMessage = viewModel.counselErrorMessage,
+                        history = viewModel.counselHistory,
+                        isLoadingHistory = viewModel.isLoadingHistory,
+                        historyErrorMessage = viewModel.historyErrorMessage,
+                        onHistoryEntryClick = { entry -> viewModel.openHistoryDetail(entry.cnsKeyId) }
+                    )
+                    ProfessorCounselSection.APPLY -> Column {
+                        ProfessorPickerSection(viewModel)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        ProfessorCounselApplyForm(viewModel)
+                    }
+                }
 
                 // 맨 아래 카드가 화면 하단에 딱 붙지 않도록, 기능 카드 하나 정도의 세로폭만큼
                 // 항상 여유 스크롤 공간을 남겨둔다(모아보기 화면과 동일한 기준).
@@ -189,6 +202,65 @@ private fun AdvisorNameCard(name: String?, isLoading: Boolean, errorMessage: Str
                 color = TextSecondary
             )
         }
+    }
+}
+
+/** "지도교수 상담 현황"/"지도교수 상담 신청" 두 섹션을 오가는 세그먼트 컨트롤 — 평범한 버튼 두 개가
+ *  아니라, 알약 모양 트랙 안에서 고른 쪽만 통째로 채워지는 한 덩어리로 보이게 해서 "지금 이 섹션이
+ *  선택돼 있다"는 상태가 바로 읽히게 한다. */
+@Composable
+private fun CounselSectionSwitcher(selected: ProfessorCounselSection, onSelect: (ProfessorCounselSection) -> Unit) {
+    val targetFraction = if (selected == ProfessorCounselSection.STATUS) 0f else 1f
+    val fraction by animateFloatAsState(targetValue = targetFraction, label = "sectionSwitcherIndicator")
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface)
+            .padding(4.dp)
+    ) {
+        val tabWidth = maxWidth / 2
+        Box(
+            modifier = Modifier
+                .offset(x = tabWidth * fraction)
+                .width(tabWidth)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Primary)
+        )
+        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            CounselSectionTab(
+                label = "지도교수 상담 현황",
+                selected = selected == ProfessorCounselSection.STATUS,
+                onClick = { onSelect(ProfessorCounselSection.STATUS) },
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+            CounselSectionTab(
+                label = "지도교수 상담 신청",
+                selected = selected == ProfessorCounselSection.APPLY,
+                onClick = { onSelect(ProfessorCounselSection.APPLY) },
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+        }
+    }
+}
+
+@Composable
+private fun CounselSectionTab(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val textColor by animateColorAsState(targetValue = if (selected) OnPrimary else TextSecondary, label = "sectionTabText")
+    Box(
+        modifier = modifier
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = textColor,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

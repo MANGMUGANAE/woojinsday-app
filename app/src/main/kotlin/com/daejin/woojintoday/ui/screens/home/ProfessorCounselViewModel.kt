@@ -255,12 +255,22 @@ class ProfessorCounselViewModel(
                 is CounselApplyResult.Success -> {
                     applyResultMessage = "상담 신청이 완료됐어요!"
                     applySucceeded = true
+                    clearApplyForm()
                     refreshHistory()
                 }
                 is CounselApplyResult.NetworkError -> applyResultMessage = result.message
             }
             isSubmittingApply = false
         }
+    }
+
+    /** 신청 성공 직후 다음 신청을 위해 폼을 비운다 — 어차피 화면도 상담 현황 쪽으로 넘어간다. */
+    private fun clearApplyForm() {
+        applyContent = ""
+        applyPhonePart1 = ""
+        applyPhonePart2 = ""
+        applyPhonePart3 = ""
+        applyEmail = ""
     }
 
     /** 방금 신청한 게 이력에 바로 반영되도록, 신청 성공 직후 상담 이력을 다시 불러온다. */

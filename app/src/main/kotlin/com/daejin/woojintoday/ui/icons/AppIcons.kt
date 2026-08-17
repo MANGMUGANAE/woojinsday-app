@@ -1,9 +1,17 @@
 package com.daejin.woojintoday.ui.icons
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -11,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.dp
 import com.daejin.woojintoday.ui.theme.AccentBlue
 import com.daejin.woojintoday.ui.theme.AccentBlueDeep
@@ -507,6 +516,29 @@ fun IconFilter(tint: Color, modifier: Modifier = Modifier, size: androidx.compos
  *  아이콘들과 달리 tint 파라미터를 받지 않는다("AI" 자체를 나타내는 고정 마크라는 의미). */
 @Composable
 fun IconSparkle(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 20.dp) {
+    // 제미나이 아이콘처럼 단색으로 가만히 있지 않고, 계속 살짝 커졌다 작아지며 은은하게
+    // 반짝이는 느낌을 준다 — 크기(scale)와 투명도를 같은 사이클로 움직이고, 그 안의 그라디언트
+    // 각도도 천천히 돌려서 색이 계속 흐르는 것처럼 보이게 한다.
+    val infiniteTransition = rememberInfiniteTransition(label = "sparkleShimmer")
+    val twinkle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sparkleTwinkle"
+    )
+    val shimmerAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sparkleShimmerAngle"
+    )
+
     Canvas(modifier = modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
@@ -519,14 +551,29 @@ fun IconSparkle(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp
             quadraticTo(center.x, center.y, w * 0.5f, h * 0.02f)
             close()
         }
-        drawPath(
-            path,
-            brush = Brush.linearGradient(
-                colors = listOf(AccentBlue, AccentBlueDeep),
-                start = Offset(0f, 0f),
-                end = Offset(w, h)
-            )
+
+        val angleRad = Math.toRadians(shimmerAngle.toDouble())
+        val radius = kotlin.math.hypot(w, h) / 2f
+        val gradientStart = Offset(
+            center.x - (kotlin.math.cos(angleRad) * radius).toFloat(),
+            center.y - (kotlin.math.sin(angleRad) * radius).toFloat()
         )
+        val gradientEnd = Offset(
+            center.x + (kotlin.math.cos(angleRad) * radius).toFloat(),
+            center.y + (kotlin.math.sin(angleRad) * radius).toFloat()
+        )
+
+        scale(scale = 0.88f + 0.12f * twinkle, pivot = center) {
+            drawPath(
+                path,
+                brush = Brush.linearGradient(
+                    colors = listOf(AccentBlue, Color.White, AccentBlueDeep),
+                    start = gradientStart,
+                    end = gradientEnd
+                ),
+                alpha = 0.7f + 0.3f * twinkle
+            )
+        }
     }
 }
 

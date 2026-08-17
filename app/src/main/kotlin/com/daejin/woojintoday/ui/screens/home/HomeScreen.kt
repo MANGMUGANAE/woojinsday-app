@@ -109,6 +109,7 @@ fun HomeScreen(
     var showMealDialog by remember { mutableStateOf(false) }
     var showCampusWalkDialog by remember { mutableStateOf(false) }
     var showMileageStatusDialog by remember { mutableStateOf(false) }
+    var showProfessorCounselDialog by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showTermsDialog by remember { mutableStateOf(false) }
     val greeting = remember { greetingLabel() }
@@ -119,6 +120,7 @@ fun HomeScreen(
             "notice_board" -> showNoticeDialog = true
             "campus_walk" -> showCampusWalkDialog = true
             "mileage_status" -> showMileageStatusDialog = true
+            "professor_counsel" -> showProfessorCounselDialog = true
         }
     }
 
@@ -127,6 +129,9 @@ fun HomeScreen(
     }
     if (showMileageStatusDialog) {
         MileageStatusDialog(onDismiss = { showMileageStatusDialog = false })
+    }
+    if (showProfessorCounselDialog) {
+        ProfessorCounselDialog(onDismiss = { showProfessorCounselDialog = false })
     }
     if (showMealDialog) {
         MealDialog(onDismiss = { showMealDialog = false })
@@ -450,13 +455,18 @@ data class HomeFeature(
     // true면 위 크기/오프셋 대신, 카드 오른쪽 안에 딱 맞게(높이 기준) 들어간다 — 크기를 잘못 예측할
     // 걱정 없이 항상 카드 안에서 오른쪽에 온전히 보이게 하고 싶을 때 쓴다.
     val imageFitInCard: Boolean = false,
+    val imageFitInCardSize: Dp = 100.dp,
     // imageOnLeft=true일 때만 쓰는 이미지 높이 비율 — 1f면 카드 높이에 꽉 차게, 줄이면 위아래 여백이
     // 그만큼 생긴다(이미지마다 원본 여백/비중이 달라 따로 맞춰줘야 한다).
     val imageOnLeftHeightFraction: Float = 1f,
     // imageOnLeft=true일 때만 쓰는 가로/세로 오프셋 — 기본은 카드 왼쪽 끝에 딱 붙지만, 이미지마다
     // 살짝 밀어야 균형이 맞는 경우가 있어 따로 조절한다(세로는 기본 -10dp 위로 당겨진 위치 기준 추가값).
     val imageOnLeftOffsetX: Dp = 0.dp,
-    val imageOnLeftOffsetY: Dp = 0.dp
+    val imageOnLeftOffsetY: Dp = 0.dp,
+    // imageOnLeft=false인데도 "공지사항을 알려드릴게요" 카드처럼 카드 높이에 꽉 차게 오른쪽에
+    // 배치하고 싶을 때 쓴다 — true면 imageSize/imageOffsetX 대신 위 imageOnLeftHeightFraction/
+    // imageOnLeftOffsetX/Y를 그대로 재사용해 좌우만 뒤집은 동일한 크기/위치로 그린다.
+    val imageFillHeight: Boolean = false
 )
 
 val HomeFeatures = listOf(
@@ -464,7 +474,9 @@ val HomeFeatures = listOf(
         id = "woojin_calendar",
         title = "우진이의 캘린더",
         subtitle = "학교 일정을 알림으로 받아보세요",
-        imageRes = R.drawable.woojin_cutout
+        imageRes = R.drawable.woojin_cutout,
+        imageSize = 1400.dp,
+        imageOffsetX = 130.dp
     ),
     HomeFeature(
         id = "notice_board",
@@ -478,7 +490,8 @@ val HomeFeatures = listOf(
         title = "연강이 가능할까요?",
         subtitle = "건물간 도보 시간을 알려드릴께요!",
         imageRes = R.drawable.woojin_map,
-        imageFitInCard = true
+        imageFitInCard = true,
+        imageFitInCardSize = 116.dp
     ),
     HomeFeature(
         id = "mileage_status",
@@ -489,6 +502,17 @@ val HomeFeatures = listOf(
         imageOnLeftHeightFraction = 0.6f,
         imageOnLeftOffsetX = 16.dp,
         imageOnLeftOffsetY = 6.dp
+    ),
+    HomeFeature(
+        id = "professor_counsel",
+        title = "지도교수 상담",
+        subtitle = "내 지도교수님은\n누구실까요?",
+        imageRes = R.drawable.woojin_prof,
+        imageFillHeight = true,
+        // 기본(공지사항 카드와 동일한) 크기에서 30% 줄인 값.
+        imageOnLeftHeightFraction = 0.7f,
+        imageOnLeftOffsetX = (-10).dp,
+        imageOnLeftOffsetY = 10.dp
     )
 )
 
@@ -587,13 +611,17 @@ fun FeatureCard(feature: HomeFeature, modifier: Modifier = Modifier, onClick: ((
             Image(
                 painter = painterResource(id = feature.imageRes),
                 contentDescription = null,
-                modifier = if (feature.imageFitInCard) {
-                    Modifier
+                modifier = when {
+                    feature.imageFillHeight -> Modifier
                         .align(Alignment.CenterEnd)
-                        .size(100.dp)
+                        .fillMaxHeight(fraction = feature.imageOnLeftHeightFraction)
+                        .padding(vertical = 8.dp)
+                        .offset(x = feature.imageOnLeftOffsetX, y = (-10).dp + feature.imageOnLeftOffsetY)
+                    feature.imageFitInCard -> Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(feature.imageFitInCardSize)
                         .padding(20.dp)
-                } else {
-                    Modifier
+                    else -> Modifier
                         .align(Alignment.CenterEnd)
                         .size(feature.imageSize)
                         .offset(x = feature.imageOffsetX, y = (-2).dp)

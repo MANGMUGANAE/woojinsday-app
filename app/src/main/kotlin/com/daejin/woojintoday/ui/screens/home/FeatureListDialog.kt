@@ -53,7 +53,9 @@ fun FeatureListDialog(
 
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp),
+                // 맨 아래 카드가 화면 하단에 딱 붙지 않도록, 기능 카드 하나(140dp) 높이만큼 항상
+                // 여유 스크롤 공간을 남겨둔다.
+                contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp + 140.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(features) { feature ->

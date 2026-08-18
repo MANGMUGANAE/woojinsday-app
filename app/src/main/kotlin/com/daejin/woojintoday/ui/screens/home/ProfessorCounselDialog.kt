@@ -169,13 +169,21 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
                         onHistoryEntryClick = { entry -> viewModel.openHistoryDetail(entry.cnsKeyId) }
                     )
                     ProfessorCounselSection.APPLY -> Column {
+                        var professorPickerExpanded by remember { mutableStateOf(false) }
+                        // 검색창 자신이 펼쳐져 있을 때는(그 안 입력칸에 포커스가 있을 수 있으니)
+                        // 키보드가 떠도 이 카드는 접지 않고, 전화번호 등 다른 입력칸 때문에 키보드가
+                        // 뜬 경우에만 접어서 그 입력칸이 보이게 자리를 비켜준다.
                         AnimatedVisibility(
-                            visible = !imeVisible,
+                            visible = !imeVisible || professorPickerExpanded,
                             enter = expandVertically() + fadeIn(),
                             exit = shrinkVertically() + fadeOut()
                         ) {
                             Column {
-                                ProfessorPickerSection(viewModel)
+                                ProfessorPickerSection(
+                                    viewModel = viewModel,
+                                    expanded = professorPickerExpanded,
+                                    onExpandedChange = { professorPickerExpanded = it }
+                                )
                                 Spacer(modifier = Modifier.height(14.dp))
                             }
                         }
@@ -585,10 +593,15 @@ private fun RowScope.CounselTableCell(text: String, weight: Float, isHeader: Boo
 }
 
 /** 상담교수 선택 — 기본은 내 지도교수, "변경"을 누르면 이름 검색으로 다른 교수도 고를 수 있다.
- *  검색 결과에도 지도교수가 항상 맨 위에 "(지도교수)" 표시와 함께 고정으로 보인다. */
+ *  검색 결과에도 지도교수가 항상 맨 위에 "(지도교수)" 표시와 함께 고정으로 보인다. [expanded]를
+ *  끌어올려 받는 건, 이 카드 자신의 검색창에 포커스가 있을 때는(펼쳐져 있을 때는) 키보드가 떠도
+ *  이 카드를 접지 않고, 전화번호 등 다른 입력칸에 포커스가 갔을 때만 접히게 하기 위해서다. */
 @Composable
-private fun ProfessorPickerSection(viewModel: ProfessorCounselViewModel) {
-    var expanded by remember { mutableStateOf(false) }
+private fun ProfessorPickerSection(
+    viewModel: ProfessorCounselViewModel,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
+) {
     LaunchedEffect(expanded) {
         if (expanded) viewModel.updateSearchQuery(viewModel.professorSearchQuery)
     }
@@ -618,7 +631,7 @@ private fun ProfessorPickerSection(viewModel: ProfessorCounselViewModel) {
                 text = if (expanded) "닫기" else "변경",
                 style = MaterialTheme.typography.labelMedium,
                 color = Primary,
-                modifier = Modifier.clickable { expanded = !expanded }
+                modifier = Modifier.clickable { onExpandedChange(!expanded) }
             )
         }
 
@@ -669,7 +682,7 @@ private fun ProfessorPickerSection(viewModel: ProfessorCounselViewModel) {
                                 .background(Background)
                                 .clickable {
                                     viewModel.selectProfessor(professor)
-                                    expanded = false
+                                    onExpandedChange(false)
                                 }
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically

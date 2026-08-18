@@ -35,6 +35,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.daejin.woojintoday.data.model.Course
 import com.daejin.woojintoday.data.model.SavedTimetable
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconChevronDown
 import com.daejin.woojintoday.ui.icons.IconClose
 import com.daejin.woojintoday.ui.theme.Background
@@ -62,10 +63,11 @@ fun SavedTimetableListDialog(
     var expandedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -120,6 +122,8 @@ fun SavedTimetableListDialog(
                     }
                 }
             }
+        }
+        }
         }
     }
 }

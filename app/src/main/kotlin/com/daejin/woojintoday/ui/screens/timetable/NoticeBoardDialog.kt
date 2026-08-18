@@ -62,6 +62,7 @@ import com.daejin.woojintoday.data.network.LectureTimetableNoticeClient
 import com.daejin.woojintoday.data.network.MileageEligibility
 import com.daejin.woojintoday.data.network.NoticeClient
 import com.daejin.woojintoday.schedule.NoticeWatchScheduler
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.screens.login.NoticeViewModel
 import com.daejin.woojintoday.ui.theme.Background
@@ -119,10 +120,11 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -224,6 +226,8 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
                 )
             }
+        }
+        }
         }
     }
 

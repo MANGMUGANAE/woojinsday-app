@@ -1,11 +1,7 @@
 package com.daejin.woojintoday
 
 import android.content.Intent
-import android.graphics.Color as AndroidColor
 import android.os.Bundle
-import android.view.OrientationEventListener
-import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.daejin.woojintoday.data.NoticeSection
 import com.daejin.woojintoday.data.TermsAgreementStore
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.screens.home.HomeScreen
 import com.daejin.woojintoday.ui.screens.login.LoginScreen
 import com.daejin.woojintoday.ui.screens.splash.SplashDestination
@@ -59,27 +56,11 @@ class MainActivity : ComponentActivity() {
     // Intent 자체는 Compose가 감지 못 하므로, 여기 담아뒀다가 값이 바뀔 때 리컴포지션이 일어나게 한다.
     private var pendingIntentExtra by mutableStateOf<Intent?>(null)
 
-    // 화면 자체는 screenOrientation="portrait"로 회전을 막아뒀지만(레이아웃이 세로 기준이라
-    // 반응형이 없음), 기기를 가로로 눕히려는 시도는 원시 방향 센서(OrientationEventListener)로
-    // 따로 감지해서 앱 실행(프로세스 기준) 중 딱 한 번만 안내 토스트를 띄운다.
-    private var landscapeToastShown = false
-    private lateinit var orientationEventListener: OrientationEventListener
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         MobileAds.initialize(this)
         pendingIntentExtra = intent
-        orientationEventListener = object : OrientationEventListener(this) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN || landscapeToastShown) return
-                val isLandscape = orientation in 60..120 || orientation in 240..300
-                if (isLandscape) {
-                    landscapeToastShown = true
-                    showLandscapeUnsupportedToast()
-                }
-            }
-        }
         setContent {
             WoojinTheme {
                 WoojinApp(
@@ -90,37 +71,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        orientationEventListener.enable()
-    }
-
-    override fun onPause() {
-        orientationEventListener.disable()
-        super.onPause()
-    }
-
     // singleTask라 이미 떠있는 상태로 알림을 또 누르면 onCreate가 아니라 여기로 온다.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingIntentExtra = intent
-    }
-
-    /** 기본 Toast는 글자색을 못 바꿔서, 빨간 글자의 커스텀 뷰를 직접 만들어 띄운다. */
-    private fun showLandscapeUnsupportedToast() {
-        val textView = TextView(this).apply {
-            text = "가로모드는 지원하지 않아요!"
-            setTextColor(AndroidColor.RED)
-            textSize = 15f
-            setPadding(48, 32, 48, 32)
-            setBackgroundColor(AndroidColor.parseColor("#E6000000"))
-        }
-        Toast(this).apply {
-            duration = Toast.LENGTH_SHORT
-            view = textView
-            show()
-        }
     }
 }
 
@@ -147,11 +102,14 @@ private fun WoojinApp(pendingIntent: Intent?, onDeepLinkConsumed: () -> Unit) {
     // enableEdgeToEdge() draws content behind the status/navigation bars, so the outer Box paints
     // the app background all the way to the screen edges while the NavHost content itself is
     // inset with safeDrawingPadding — otherwise bottom buttons sit under the gesture nav bar.
+    // ResponsiveContainer caps/centers that inset content on screens wider than a phone (tablet,
+    // unfolded foldable, phone landscape) — a no-op on today's phone-portrait width.
     Box(modifier = Modifier.fillMaxSize().background(Background)) {
+    ResponsiveContainer(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
     NavHost(
         navController = navController,
         startDestination = Routes.SPLASH,
-        modifier = Modifier.fillMaxSize().safeDrawingPadding()
+        modifier = Modifier.fillMaxSize()
     ) {
         composable(Routes.SPLASH) {
             SplashScreen(
@@ -218,6 +176,7 @@ private fun WoojinApp(pendingIntent: Intent?, onDeepLinkConsumed: () -> Unit) {
                 }
             )
         }
+    }
     }
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.daejin.woojintoday.data.network.FindStudentIdResult
 import com.daejin.woojintoday.data.network.StudentIdFinderClient
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.components.WheelPicker
 import com.daejin.woojintoday.ui.components.wheelRange
 import com.daejin.woojintoday.ui.icons.IconArrowBack
@@ -91,10 +92,11 @@ fun FindStudentIdDialog(onDismiss: () -> Unit, onUseStudentNo: (String) -> Unit)
     val canSubmit = name.isNotBlank() && mobile1.length == 3 && mobile2.length == 4 && mobile3.length == 4
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -312,6 +314,8 @@ fun FindStudentIdDialog(onDismiss: () -> Unit, onUseStudentNo: (String) -> Unit)
                     }
                 }
             }
+        }
+        }
         }
     }
 }

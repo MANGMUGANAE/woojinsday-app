@@ -1,6 +1,7 @@
 package com.daejin.woojintoday.ui.screens.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.daejin.woojintoday.data.TermsAgreementStore
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.screens.terms.TermsBodyList
 import com.daejin.woojintoday.ui.theme.Background
@@ -39,10 +41,11 @@ fun TermsHistoryDialog(onDismiss: () -> Unit) {
     val agreedAt = remember { TermsAgreementStore(context).agreedAtEpochMillis() }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
                 .safeDrawingPadding()
         ) {
             Row(
@@ -73,6 +76,8 @@ fun TermsHistoryDialog(onDismiss: () -> Unit) {
                 contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 64.dp),
                 showPrivacyLink = true
             )
+        }
+        }
         }
     }
 }

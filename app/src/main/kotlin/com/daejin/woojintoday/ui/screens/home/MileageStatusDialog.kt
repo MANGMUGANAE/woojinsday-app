@@ -58,6 +58,7 @@ import com.daejin.woojintoday.data.network.MileageEligibility
 import com.daejin.woojintoday.data.network.MileageHistoryEntry
 import com.daejin.woojintoday.data.network.MileageScholarshipClient
 import com.daejin.woojintoday.data.network.MileageSummary
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.screens.timetable.MileageNoticeItem
 import com.daejin.woojintoday.ui.screens.timetable.MileageScholarshipViewModel
@@ -88,10 +89,11 @@ fun MileageStatusDialog(onDismiss: () -> Unit) {
     var noticeExpanded by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -167,6 +169,8 @@ fun MileageStatusDialog(onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
                 )
             }
+        }
+        }
         }
     }
 

@@ -47,6 +47,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.daejin.woojintoday.data.model.Department
 import com.daejin.woojintoday.data.model.Departments
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.icons.IconSearch
 import com.daejin.woojintoday.ui.theme.AccentBlue
@@ -71,10 +72,11 @@ fun RankDialog(onDismiss: () -> Unit) {
     var isChangingDepartment by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -119,6 +121,8 @@ fun RankDialog(onDismiss: () -> Unit) {
                     )
                 }
             }
+        }
+        }
         }
     }
 }

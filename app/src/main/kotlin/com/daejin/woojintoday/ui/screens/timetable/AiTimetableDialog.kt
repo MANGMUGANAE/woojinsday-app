@@ -51,6 +51,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.daejin.woojintoday.data.model.Course
 import com.daejin.woojintoday.data.model.TimeRegion
 import com.daejin.woojintoday.data.model.Weekday
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconChevronLeft
 import com.daejin.woojintoday.ui.icons.IconClose
 import com.daejin.woojintoday.ui.icons.IconSparkle
@@ -184,7 +185,9 @@ fun AiTimetableDialog(
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(modifier = Modifier.fillMaxSize().background(Background)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
+        Column(modifier = Modifier.fillMaxSize()) {
             AiDialogHeader(
                 showResults = showResults,
                 resultPagerState = resultPagerState,
@@ -263,6 +266,8 @@ fun AiTimetableDialog(
                     }
                 }
             }
+        }
+        }
         }
     }
 }

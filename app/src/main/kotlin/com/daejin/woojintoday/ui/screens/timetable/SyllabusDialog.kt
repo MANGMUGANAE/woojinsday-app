@@ -44,6 +44,7 @@ import com.daejin.woojintoday.data.model.SyllabusCompetencyRow
 import com.daejin.woojintoday.data.model.SyllabusMethodRow
 import com.daejin.woojintoday.data.model.SyllabusSection
 import com.daejin.woojintoday.data.model.SyllabusWeek
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.theme.Background
 import com.daejin.woojintoday.ui.theme.Border
@@ -68,10 +69,11 @@ fun SyllabusDialog(
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 8.dp),
@@ -129,6 +131,8 @@ fun SyllabusDialog(
                     SyllabusContent(syllabus = viewModel.syllabus!!)
                 }
             }
+        }
+        }
         }
     }
 }

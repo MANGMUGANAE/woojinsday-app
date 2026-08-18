@@ -51,6 +51,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.daejin.woojintoday.data.network.CafeteriaEntry
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.components.WheelPicker
 import com.daejin.woojintoday.ui.components.wheelRange
 import com.daejin.woojintoday.ui.icons.IconArrowBack
@@ -95,10 +96,11 @@ fun MealDialog(onDismiss: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -173,6 +175,8 @@ fun MealDialog(onDismiss: () -> Unit) {
                     )
                 }
             }
+        }
+        }
         }
     }
 }

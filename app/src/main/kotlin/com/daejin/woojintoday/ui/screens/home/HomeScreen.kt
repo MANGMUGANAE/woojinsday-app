@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -608,29 +610,57 @@ fun FeatureCard(feature: HomeFeature, modifier: Modifier = Modifier, onClick: ((
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(text = feature.subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
-            Image(
-                painter = painterResource(id = feature.imageRes),
-                contentDescription = null,
-                modifier = when {
-                    feature.imageFillHeight -> Modifier
+            when {
+                feature.imageFillHeight -> Image(
+                    painter = painterResource(id = feature.imageRes),
+                    contentDescription = null,
+                    modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight(fraction = feature.imageOnLeftHeightFraction)
                         .padding(vertical = 8.dp)
-                        .offset(x = feature.imageOnLeftOffsetX, y = (-10).dp + feature.imageOnLeftOffsetY)
-                    feature.imageFitInCard -> Modifier
+                        .offset(x = feature.imageOnLeftOffsetX, y = (-10).dp + feature.imageOnLeftOffsetY),
+                    contentScale = ContentScale.Fit
+                )
+                feature.imageFitInCard -> Image(
+                    painter = painterResource(id = feature.imageRes),
+                    contentDescription = null,
+                    modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .size(feature.imageFitInCardSize)
-                        .padding(20.dp)
-                    else -> Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(feature.imageSize)
-                        .offset(x = feature.imageOffsetX, y = (-2).dp)
-                },
-                contentScale = ContentScale.Fit
-            )
+                        .padding(20.dp),
+                    contentScale = ContentScale.Fit
+                )
+                else -> BoxWithConstraints(modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()) {
+                    // 이 캐릭터는 카드보다 훨씬 큰 원본(imageSize)을 오른쪽에 걸쳐 일부만 보여주는
+                    // 방식이라, 카드 폭을 그대로 크롭 기준으로 쓰면 화면이 넓어질 때(가로모드/태블릿)
+                    // 왼쪽으로 더 많은 부분이 드러나며 캐릭터가 왼쪽으로 밀린 것처럼 보인다. 세로 폰
+                    // 폭을 넘지 않는 고정 기준폭까지만 노출 창을 두고 그 창을 카드 우측 끝에 붙여서,
+                    // 화면이 넓어져도 항상 세로 화면과 같은 크롭으로 오른쪽에 딱 붙어 보이게 한다.
+                    val visibleWindow = minOf(maxWidth, CalendarImageReferenceWidth)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .width(visibleWindow)
+                            .fillMaxHeight()
+                            .clipToBounds()
+                    ) {
+                        Image(
+                            painter = painterResource(id = feature.imageRes),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .size(feature.imageSize)
+                                .offset(x = feature.imageOffsetX, y = (-2).dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+private val CalendarImageReferenceWidth = 400.dp
 
 @Composable
 private fun SubCard(

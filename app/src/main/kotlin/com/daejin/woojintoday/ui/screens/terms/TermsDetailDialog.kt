@@ -1,6 +1,7 @@
 package com.daejin.woojintoday.ui.screens.terms
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.theme.Background
 import com.daejin.woojintoday.ui.theme.TextPrimary
@@ -27,10 +29,11 @@ import com.daejin.woojintoday.ui.theme.TextPrimary
 @Composable
 fun TermsDetailDialog(onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
                 .safeDrawingPadding()
         ) {
             Row(
@@ -48,6 +51,8 @@ fun TermsDetailDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 64.dp)
             )
+        }
+        }
         }
     }
 }

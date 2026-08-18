@@ -56,6 +56,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.daejin.woojintoday.data.model.CampusBuilding
 import com.daejin.woojintoday.data.model.CampusWalkRoute
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.icons.IconClose
 import com.daejin.woojintoday.ui.icons.IconSearch
@@ -104,6 +105,7 @@ fun CampusWalkDialog(onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
             CampusMapView(
                 buildings = viewModel.buildings,
                 departure = viewModel.departure,
@@ -190,6 +192,7 @@ fun CampusWalkDialog(onDismiss: () -> Unit) {
                     )
                 }
             }
+        }
         }
     }
 

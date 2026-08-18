@@ -79,6 +79,7 @@ import com.daejin.woojintoday.data.network.AdvisorCounselStatus
 import com.daejin.woojintoday.data.network.CounselDetail
 import com.daejin.woojintoday.data.network.CounselHistoryEntry
 import com.daejin.woojintoday.data.network.ProfessorSearchResult
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.icons.IconArrowBack
 import com.daejin.woojintoday.ui.theme.Background
 import com.daejin.woojintoday.ui.theme.Border
@@ -105,10 +106,11 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
     val imeVisible = WindowInsets.isImeVisible
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -185,6 +187,8 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
                 // 항상 여유 스크롤 공간을 남겨둔다(모아보기 화면과 동일한 기준).
                 Spacer(modifier = Modifier.height(140.dp))
             }
+        }
+        }
         }
     }
 

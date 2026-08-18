@@ -67,6 +67,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.daejin.woojintoday.data.model.AcademicEvent
 import com.daejin.woojintoday.data.model.UserCalendarEvent
+import com.daejin.woojintoday.ui.components.ResponsiveContainer
 import com.daejin.woojintoday.ui.components.WheelPicker
 import com.daejin.woojintoday.ui.components.wheelRange
 import com.daejin.woojintoday.ui.icons.IconArrowBack
@@ -131,6 +132,7 @@ fun AcademicCalendarDialog(onDismiss: () -> Unit) {
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Box(modifier = Modifier.fillMaxSize().background(Background).imePadding()) {
+        ResponsiveContainer {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -146,6 +148,7 @@ fun AcademicCalendarDialog(onDismiss: () -> Unit) {
 
             LazyColumn(
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .then(
@@ -376,6 +379,7 @@ fun AcademicCalendarDialog(onDismiss: () -> Unit) {
                 },
                 onCommitted = { resetAddBar() }
             )
+        }
         }
         }
 

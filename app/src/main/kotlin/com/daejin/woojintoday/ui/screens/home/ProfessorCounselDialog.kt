@@ -1,7 +1,12 @@
 package com.daejin.woojintoday.ui.screens.home
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -9,14 +14,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,6 +63,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
@@ -84,10 +94,15 @@ private enum class ProfessorCounselSection { STATUS, APPLY }
 /** "지도교수 상담" 카드 — 내 지도교수님 성함, 졸업까지 채워야 하는 지도교수 상담 인정 횟수(학년·학기별),
  *  그리고 실제 온라인 상담 신청까지 한 화면에서 처리한다. 다른 정보 조회 다이얼로그들과 같은
  *  뒤로가기 화살표 + 스크롤 구조. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfessorCounselDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val viewModel: ProfessorCounselViewModel = viewModel(factory = ProfessorCounselViewModel.Factory(context))
+    val focusManager = LocalFocusManager.current
+    // 로그인 화면과 같은 방식 — 키보드가 뜨면 입력폼을 가리는 위쪽 요소들을 스르륵 접어서 치워주고,
+    // 키보드가 내려가면 다시 스르륵 펼쳐 보여준다.
+    val imeVisible = WindowInsets.isImeVisible
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -107,16 +122,24 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .imePadding()
                     .padding(horizontal = 20.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                AdvisorNameCard(
-                    name = viewModel.advisorName,
-                    isLoading = viewModel.isLoadingAdvisor,
-                    errorMessage = viewModel.advisorErrorMessage
-                )
-
-                Spacer(modifier = Modifier.height(28.dp))
+                AnimatedVisibility(
+                    visible = !imeVisible,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        AdvisorNameCard(
+                            name = viewModel.advisorName,
+                            isLoading = viewModel.isLoadingAdvisor,
+                            errorMessage = viewModel.advisorErrorMessage
+                        )
+                        Spacer(modifier = Modifier.height(28.dp))
+                    }
+                }
 
                 var selectedSection by remember { mutableStateOf(ProfessorCounselSection.STATUS) }
                 // 신청이 성공하면 어차피 이력이 새로고침되니, 그 결과를 바로 볼 수 있게 현황
@@ -124,7 +147,13 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
                 LaunchedEffect(viewModel.applySucceeded) {
                     if (viewModel.applySucceeded) selectedSection = ProfessorCounselSection.STATUS
                 }
-                CounselSectionSwitcher(selected = selectedSection, onSelect = { selectedSection = it })
+                CounselSectionSwitcher(
+                    selected = selectedSection,
+                    onSelect = { section ->
+                        selectedSection = section
+                        focusManager.clearFocus()
+                    }
+                )
                 Spacer(modifier = Modifier.height(16.dp))
 
                 when (selectedSection) {
@@ -138,8 +167,16 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
                         onHistoryEntryClick = { entry -> viewModel.openHistoryDetail(entry.cnsKeyId) }
                     )
                     ProfessorCounselSection.APPLY -> Column {
-                        ProfessorPickerSection(viewModel)
-                        Spacer(modifier = Modifier.height(14.dp))
+                        AnimatedVisibility(
+                            visible = !imeVisible,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column {
+                                ProfessorPickerSection(viewModel)
+                                Spacer(modifier = Modifier.height(14.dp))
+                            }
+                        }
                         ProfessorCounselApplyForm(viewModel)
                     }
                 }

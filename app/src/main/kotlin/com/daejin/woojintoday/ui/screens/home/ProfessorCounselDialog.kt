@@ -7,6 +7,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -104,8 +107,14 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
     // 로그인 화면과 같은 방식 — 키보드가 뜨면 입력폼을 가리는 위쪽 요소들을 스르륵 접어서 치워주고,
     // 키보드가 내려가면 다시 스르륵 펼쳐 보여준다.
     val imeVisible = WindowInsets.isImeVisible
+    // 상담 방식 선택은 이 다이얼로그를 나갈 때마다 잊어버려야 하니(다시 열면 항상 미선택 상태),
+    // 뒤로가기 화살표든 시스템 back이든 어떤 경로로 닫히든 항상 여기를 거치게 한다.
+    val handleDismiss: () -> Unit = {
+        viewModel.resetMethodSelection()
+        onDismiss()
+    }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = handleDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier.fillMaxSize().background(Background)) {
         ResponsiveContainer {
         Column(
@@ -116,7 +125,7 @@ fun ProfessorCounselDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = handleDismiss) {
                     IconArrowBack(tint = TextPrimary)
                 }
             }
@@ -710,7 +719,123 @@ private fun ProfessorPickerSection(
     }
 }
 
-private const val APPLY_STEP_COUNT = 3
+/** 신청 카드 1페이지 — 온라인/방문 상담 선택. 방문을 고르면 그 아래로 상담 가능 시간 고르는
+ *  칸이 바로 이어지고, 여기서 시간을 하나 고를 때까지 "다음" 버튼이 비활성 상태로 남는다
+ *  ([ProfessorCounselViewModel.isMethodStepValid]). */
+@Composable
+private fun ConsultMethodStep(viewModel: ProfessorCounselViewModel) {
+    Column {
+        Text(text = "무슨 상담을 원하세요?", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ConsultMethodChip(
+                label = "온라인 상담",
+                selected = viewModel.selectedMethod == ConsultMethod.ONLINE,
+                modifier = Modifier.weight(1f),
+                onClick = { viewModel.selectMethod(ConsultMethod.ONLINE) }
+            )
+            ConsultMethodChip(
+                label = "방문 상담",
+                selected = viewModel.selectedMethod == ConsultMethod.OFFLINE,
+                modifier = Modifier.weight(1f),
+                onClick = { viewModel.selectMethod(ConsultMethod.OFFLINE) }
+            )
+        }
+
+        if (viewModel.selectedMethod == ConsultMethod.OFFLINE) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(text = "상담시간", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Spacer(modifier = Modifier.height(10.dp))
+            CnsSlotPicker(viewModel)
+        }
+    }
+}
+
+@Composable
+private fun ConsultMethodChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) Primary else Background)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) OnPrimary else TextPrimary
+        )
+    }
+}
+
+private val SLOT_DATE_FORMATTER: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("M월 d일 (E)", java.util.Locale.KOREAN)
+
+/** 상담가능(counsel_possible)인 칸만 걸러 날짜별로 묶어 보여준다 — 하루에 시간대가 여러 개여도
+ *  날짜 아래 알약(chip)들이 줄바꿈되며 한눈에 들어오게 [FlowRow]로 배치한다. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CnsSlotPicker(viewModel: ProfessorCounselViewModel) {
+    when {
+        viewModel.isLoadingSlots -> Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(color = Primary, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "상담 가능한 시간을 찾고 있어요...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+        }
+        viewModel.slotsErrorMessage != null -> Text(
+            text = viewModel.slotsErrorMessage.orEmpty(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
+        viewModel.availableSlots.isEmpty() -> Text(
+            text = "앞으로 3개월 안에 상담 가능한 시간이 없어요",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
+        else -> {
+            val grouped = remember(viewModel.availableSlots) {
+                viewModel.availableSlots.groupBy { it.date }.toSortedMap()
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                grouped.forEach { (date, slots) ->
+                    Column {
+                        Text(
+                            text = date.format(SLOT_DATE_FORMATTER),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            slots.forEach { slot ->
+                                val selected = slot == viewModel.selectedSlot
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (selected) Primary else Background)
+                                        .clickable { viewModel.selectSlot(slot) }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = slot.time,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (selected) OnPrimary else TextPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private const val APPLY_STEP_COUNT = 4
 private val EMAIL_DOMAIN_SUGGESTIONS = listOf(
     "daejin.ac.kr", "gmail.com", "naver.com", "hanmail.net", "nate.com", "kakao.com", "outlook.com"
 )
@@ -722,7 +847,14 @@ private val EMAIL_DOMAIN_SUGGESTIONS = listOf(
 private fun ProfessorCounselApplyForm(viewModel: ProfessorCounselViewModel) {
     val pagerState = rememberPagerState(pageCount = { APPLY_STEP_COUNT })
     val scope = rememberCoroutineScope()
-    val goToPage: (Int) -> Unit = { page -> scope.launch { pagerState.animateScrollToPage(page) } }
+    val focusManager = LocalFocusManager.current
+    // 전화번호 등 입력칸에 포커스가 남아있으면(키보드가 안 내려가면) 위 지도교수/상담방식 카드가
+    // 계속 접혀있는 채로 남는다 — "이전"으로 돌아왔을 때 다시 펼쳐지도록 페이지를 넘길 때마다
+    // 포커스를 확실히 내려놓는다.
+    val goToPage: (Int) -> Unit = { page ->
+        focusManager.clearFocus()
+        scope.launch { pagerState.animateScrollToPage(page) }
+    }
 
     Column(
         modifier = Modifier
@@ -733,13 +865,19 @@ private fun ProfessorCounselApplyForm(viewModel: ProfessorCounselViewModel) {
     ) {
         AutoHeightHorizontalPager(pagerState = pagerState, modifier = Modifier.fillMaxWidth()) { page ->
             when (page) {
-                0 -> ApplyPhoneStep(viewModel)
-                1 -> ApplyEmailStep(viewModel)
+                0 -> ConsultMethodStep(viewModel)
+                1 -> ApplyPhoneStep(viewModel)
+                2 -> ApplyEmailStep(viewModel)
                 else -> ApplyContentStep(viewModel)
             }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        // 상담 방식 단계에서 아직 아무것도 안 골라 "다음" 버튼이 아예 없는 동안에는, 버튼 자리를
+        // 위해 미리 비워두던 간격도 같이 없애서 위(칩 위)/아래(카드 끝) 여백이 대칭을 이루게 한다.
+        val showNavRow = pagerState.currentPage != 0 || viewModel.isMethodStepValid
+        if (showNavRow) {
+            Spacer(modifier = Modifier.height(18.dp))
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             if (pagerState.currentPage > 0) {
@@ -752,20 +890,44 @@ private fun ProfessorCounselApplyForm(viewModel: ProfessorCounselViewModel) {
                 }
             }
             if (pagerState.currentPage < APPLY_STEP_COUNT - 1) {
-                val stepValid = if (pagerState.currentPage == 0) viewModel.isPhoneStepValid else viewModel.isEmailStepValid
-                Button(
-                    onClick = { goToPage(pagerState.currentPage + 1) },
-                    modifier = Modifier.weight(1f),
-                    enabled = stepValid,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Primary,
-                        contentColor = OnPrimary,
-                        disabledContainerColor = Border,
-                        disabledContentColor = TextSecondary
-                    )
-                ) {
-                    Text("다음")
+                val stepValid = when (pagerState.currentPage) {
+                    0 -> viewModel.isMethodStepValid
+                    1 -> viewModel.isPhoneStepValid
+                    else -> viewModel.isEmailStepValid
+                }
+                if (pagerState.currentPage == 0) {
+                    // 상담 방식 단계는 아직 아무것도 안 고른 초반엔 "다음" 버튼 자체가 없다가,
+                    // 온라인/방문 중 하나를 고르는 순간 위에서 자연스럽게 내려오며 나타난다.
+                    AnimatedVisibility(
+                        visible = stepValid,
+                        enter = slideInVertically(initialOffsetY = { -it / 2 }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { -it / 2 }) + fadeOut(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Button(
+                            onClick = { goToPage(pagerState.currentPage + 1) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary)
+                        ) {
+                            Text("다음")
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = { goToPage(pagerState.currentPage + 1) },
+                        modifier = Modifier.weight(1f),
+                        enabled = stepValid,
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Primary,
+                            contentColor = OnPrimary,
+                            disabledContainerColor = Border,
+                            disabledContentColor = TextSecondary
+                        )
+                    ) {
+                        Text("다음")
+                    }
                 }
             } else {
                 val submitEnabled = viewModel.canSubmit && !viewModel.isSubmittingApply

@@ -17,6 +17,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import java.io.IOException
 import java.net.URLEncoder
+import java.time.LocalDate
 import kotlin.math.ceil
 
 private const val TAG = "MyFutureClient"
@@ -95,6 +96,14 @@ data class CounselDetail(
 sealed class CounselDetailResult {
     data class Success(val detail: CounselDetail) : CounselDetailResult()
     data class NetworkError(val message: String) : CounselDetailResult()
+}
+
+/** 대면 상담 가능 시간 한 칸 — [time]은 "09:00"처럼 표시용으로 이미 포맷된 문자열이다. */
+data class CnsAvailableSlot(val date: LocalDate, val time: String)
+
+sealed class CnsScheduleResult {
+    data class Success(val slots: List<CnsAvailableSlot>) : CnsScheduleResult()
+    data class NetworkError(val message: String) : CnsScheduleResult()
 }
 
 /**
@@ -346,6 +355,56 @@ class MyFutureClient(
         }
     }
 
+    /** 방문(대면) 지도교수 상담 신청 제출 — 실제 신청 폼(`#insertForm`)을 직접 떠서 확인해보니
+     *  방문 상담은 온라인과 완전히 다른 엔드포인트(`getCnsOfflineApplyAjax.do`)와 필드명
+     *  (`coaResrvCnlsrId`/`coaApplyCont`/`coaApplyPhone`/`coaApplyEmail*` 등)을 쓰는 별개의
+     *  신청서였다 — [submitOnlineCounselApply]의 `comXxx` 필드들과는 다르다. */
+    suspend fun submitOfflineCounselApply(
+        professorStaffNo: String,
+        content: String,
+        phone: String,
+        email: String,
+        slot: CnsAvailableSlot
+    ): CounselApplyResult = withContext(Dispatchers.IO) {
+        try {
+            val emailParts = email.split("@", limit = 2)
+            val emailLocal = emailParts.getOrElse(0) { "" }
+            val emailDomain = emailParts.getOrElse(1) { "" }
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("coaResrvCnlsrId", professorStaffNo)
+                .addFormDataPart("coaResrvDate", slot.date.toString())
+                .addFormDataPart("coaResrvTime", slot.time.replace(":", ""))
+                .addFormDataPart("cnsType", "PROF")
+                .addFormDataPart("coaApplyCont", content)
+                .addFormDataPart("coaApplyPhone", phone)
+                .addFormDataPart("coaApplyEmail1", emailLocal)
+                .addFormDataPart("coaApplyEmail2", emailDomain)
+                .addFormDataPart("coaApplyEmail", email)
+                .build()
+            val request = Request.Builder()
+                .url(CNS_OFFLINE_APPLY_URL)
+                .header("User-Agent", USER_AGENT)
+                .header("Origin", ORIGIN)
+                .header("Referer", MY_CNS_MAIN_URL)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .post(requestBody)
+                .build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                Log.d(TAG, "방문 상담 신청 응답 코드=${response.code}, 본문=$body")
+                if (RTN_CODE_SUCCESS_REGEX.containsMatchIn(body)) {
+                    CounselApplyResult.Success
+                } else {
+                    CounselApplyResult.NetworkError("상담 신청에 실패했습니다.")
+                }
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "네트워크 오류", e)
+            CounselApplyResult.NetworkError("상담 신청에 실패했습니다.")
+        }
+    }
+
     /** "상담 이력" — 학번(regId) 기준 전체 신청 내역을 페이지당 5건씩 병렬로 다 받아온다
      *  (마일리지 지급내역 조회와 같은 방식). */
     suspend fun fetchCounselHistory(studentNo: String): CounselHistoryResult = withContext(Dispatchers.IO) {
@@ -427,6 +486,54 @@ class MyFutureClient(
         )
     }
 
+    /** 지도교수 "대면 상담" 시간 선택 — 서버가 연/월/주차 단위로 응답을 쪼개 주는데, 한 달에
+     *  몇 주차까지 있는지 미리 알 방법이 없어 1~6주차를 전부 병렬로 조회한다(실제로 없는 주차는
+     *  그냥 빈 결과로 돌아와서 무해하다). 상담가능(counsel_possible) 칸만 걸러 모으고, 요일별
+     *  실제 날짜는 응답에 같이 실려오는 자바스크립트(`revDateText = '2026-08-17'` 같은 줄)에서
+     *  그대로 읽어오므로 주가 달을 걸쳐도(월말/월초) 날짜가 틀릴 일이 없다. */
+    suspend fun fetchAvailableCnsSlots(staffId: String): CnsScheduleResult = withContext(Dispatchers.IO) {
+        try {
+            val today = LocalDate.now()
+            val months = (0..2).map { offset -> today.plusMonths(offset.toLong()) }
+            val results = coroutineScope {
+                months.flatMap { month ->
+                    (1..6).map { week ->
+                        async { fetchCnsScheduleWeek(staffId, month.year, month.monthValue, week) }
+                    }
+                }.awaitAll()
+            }
+            val slots = results.flatten()
+                .filter { !it.date.isBefore(today) }
+                .distinct()
+                .sortedWith(compareBy({ it.date }, { it.time }))
+            CnsScheduleResult.Success(slots)
+        } catch (e: IOException) {
+            Log.e(TAG, "네트워크 오류", e)
+            CnsScheduleResult.NetworkError("상담 가능 시간을 불러오지 못했습니다.")
+        }
+    }
+
+    private fun fetchCnsScheduleWeek(staffId: String, year: Int, month: Int, week: Int): List<CnsAvailableSlot> {
+        val body = "curYear=$year&curMonth=${month.toString().padStart(2, '0')}&curWeek=$week" +
+            "&cnsStaffId=$staffId&cnsType=PROF&viewType=CLIENT"
+        val html = post(CNS_SCHEDULE_URL, MY_CNS_MAIN_URL, body)
+        return parseCnsScheduleWeek(html)
+    }
+
+    private fun parseCnsScheduleWeek(html: String): List<CnsAvailableSlot> {
+        val dateByDay = WEEKDAY_DATE_REGEX.findAll(html).associate { it.groupValues[1] to it.groupValues[2] }
+        if (dateByDay.isEmpty()) return emptyList()
+        return Jsoup.parse(html).select("label.counsel_possible[for]").mapNotNull { label ->
+            val parts = label.attr("for").split("_", limit = 2)
+            if (parts.size != 2) return@mapNotNull null
+            val (dayCode, timeCode) = parts
+            val dateStr = dateByDay[dayCode] ?: return@mapNotNull null
+            val date = runCatching { LocalDate.parse(dateStr) }.getOrNull() ?: return@mapNotNull null
+            if (timeCode.length != 4) return@mapNotNull null
+            CnsAvailableSlot(date, "${timeCode.substring(0, 2)}:${timeCode.substring(2, 4)}")
+        }
+    }
+
     private fun fetchMileageHistoryPage(userId: String, sustCd: String, shyrCd: String, pageIndex: Int): String {
         val body = "userId=$userId&sustCd=$sustCd&shyrCd=$shyrCd&pageIndex=$pageIndex"
         return post(MILEAGE_HISTORY_URL, MY_STATUS_REFERER, body)
@@ -487,8 +594,10 @@ class MyFutureClient(
         private const val MY_CNS_MAIN_URL = "https://together.daejin.ac.kr/myCns/a/m/getMyCnsMain.do"
         private const val PROF_SEARCH_URL = "https://together.daejin.ac.kr/careerCns/a/n/getProfSearchListPop.do"
         private const val CNS_ONLINE_APPLY_URL = "https://together.daejin.ac.kr/careerCns/w/n/getCnsOnlineApplyAjax.do"
+        private const val CNS_OFFLINE_APPLY_URL = "https://together.daejin.ac.kr/careerCns/w/n/getCnsOfflineApplyAjax.do"
         private const val CNS_HIS_LIST_URL = "https://together.daejin.ac.kr/cnsHis/a/n/getCnsHisListAjax.do"
         private const val CNS_DETAIL_URL = "https://together.daejin.ac.kr/cnsHis/a/n/getCnsDetailInfoPop.do"
+        private const val CNS_SCHEDULE_URL = "https://together.daejin.ac.kr/cmm/fms/getCnsSchedulCalAjax.do"
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
         private val FORM_MEDIA_TYPE = "application/x-www-form-urlencoded".toMediaType()
@@ -501,6 +610,9 @@ class MyFutureClient(
         private val GUID_STAFF_NO_REGEX = Regex("""guidStaffNo=(\d+)""")
         private val TOTAL_PROF_COUNT_REGEX = Regex("""Total:\s*(\d+)""")
         private val RTN_CODE_SUCCESS_REGEX = Regex(""""rtnCode"\s*:\s*"0"""")
+        private val WEEKDAY_DATE_REGEX = Regex(
+            """revsDate == '(MON|TUE|WED|THU|FRI)'\)[\s\S]*?revDateText = '(\d{4}-\d{2}-\d{2})';"""
+        )
     }
 }
 

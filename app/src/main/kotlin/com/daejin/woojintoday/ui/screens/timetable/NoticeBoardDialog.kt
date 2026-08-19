@@ -492,7 +492,15 @@ private fun EligibilityResultDialog(
     }
 
     if (showSheetValues && result is MileageEligibility.NotFound) {
-        SheetValuesDialog(values = result.values, onDismiss = { showSheetValues = false })
+        // 명단 모달을 닫을 때 뒤에 남아있던 "대상자 명단에 없어요" 결과 모달도 같이 닫는다 —
+        // 굳이 확인을 한 번 더 누를 필요 없이 명단보기→닫기 한 번으로 전부 닫히게.
+        SheetValuesDialog(
+            values = result.values,
+            onDismiss = {
+                showSheetValues = false
+                onDismiss()
+            }
+        )
     }
 }
 

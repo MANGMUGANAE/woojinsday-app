@@ -112,6 +112,7 @@ fun HomeScreen(
     var showCampusWalkDialog by remember { mutableStateOf(false) }
     var showMileageStatusDialog by remember { mutableStateOf(false) }
     var showProfessorCounselDialog by remember { mutableStateOf(false) }
+    var showGraduationCreditsDialog by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showTermsDialog by remember { mutableStateOf(false) }
     val greeting = remember { greetingLabel() }
@@ -123,6 +124,7 @@ fun HomeScreen(
             "campus_walk" -> showCampusWalkDialog = true
             "mileage_status" -> showMileageStatusDialog = true
             "professor_counsel" -> showProfessorCounselDialog = true
+            "graduation_credits" -> showGraduationCreditsDialog = true
         }
     }
 
@@ -134,6 +136,9 @@ fun HomeScreen(
     }
     if (showProfessorCounselDialog) {
         ProfessorCounselDialog(onDismiss = { showProfessorCounselDialog = false })
+    }
+    if (showGraduationCreditsDialog) {
+        GraduationCreditsDialog(onDismiss = { showGraduationCreditsDialog = false })
     }
     if (showMealDialog) {
         MealDialog(onDismiss = { showMealDialog = false })
@@ -515,6 +520,16 @@ val HomeFeatures = listOf(
         imageOnLeftHeightFraction = 0.7f,
         imageOnLeftOffsetX = (-10).dp,
         imageOnLeftOffsetY = 10.dp
+    ),
+    HomeFeature(
+        id = "graduation_credits",
+        title = "졸업학점",
+        subtitle = "졸업하려면 몇학점 남았을까요?",
+        imageRes = R.drawable.woojin_graduation,
+        imageOnLeft = true,
+        // 기본(공지사항 카드와 동일한) 크기에서 30% 줄인 값.
+        imageOnLeftHeightFraction = 0.7f,
+        imageOnLeftOffsetX = 10.dp
     )
 )
 

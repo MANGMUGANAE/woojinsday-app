@@ -82,13 +82,19 @@ private enum class TimeOfDayPref { MORNING, AFTERNOON, MIXED, ANY }
 private class AiTimetableAnswers {
     var credits by mutableIntStateOf(15)
     var daysOffMode by mutableStateOf(DaysOffMode.ANY)
+    // 공강/오전오후/추가옵션 카드는 실제로는 기본값(ANY 등)이 있지만, 사용자가 직접 하나를
+    // 고르기 전까지는 "다음"을 못 누르게 하고 싶어서 값과는 별개로 "직접 선택했는지"만 따로
+    // 추적한다 — 알고리즘 쪽 기본값 로직은 그대로 두고 UI 게이팅만 추가하는 셈.
+    var daysOffModeSelected by mutableStateOf(false)
     var specificDaysOff by mutableStateOf<Set<Weekday>>(emptySet())
     var anyDaysOffCount by mutableIntStateOf(1)
     var timeOfDayPref by mutableStateOf(TimeOfDayPref.ANY)
+    var timeOfDayPrefSelected by mutableStateOf(false)
     var ratioDoesNotMatter by mutableStateOf(false)
     var majorPercent by mutableIntStateOf(50)
     var ownMajorWithinMajorPercent by mutableIntStateOf(100)
     var preferEasyLectures by mutableStateOf(true)
+    var extraOptionSelected by mutableStateOf(false)
 }
 
 /**
@@ -304,7 +310,8 @@ private fun WizardNavRow(
     isLast: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    nextEnabled: Boolean = true
 ) {
     Row(
         modifier = modifier,
@@ -324,8 +331,14 @@ private fun WizardNavRow(
         Button(
             onClick = onNext,
             modifier = Modifier.weight(1f),
+            enabled = nextEnabled,
             shape = MaterialTheme.shapes.medium,
-            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Primary,
+                contentColor = OnPrimary,
+                disabledContainerColor = Border,
+                disabledContentColor = TextSecondary
+            )
         ) {
             Text(if (isLast) "시간표 만들기" else "다음")
         }
@@ -341,6 +354,7 @@ private fun StepScaffold(
     stepIndex: Int,
     onBack: () -> Unit,
     onNext: () -> Unit,
+    stepValid: Boolean = true,
     content: @Composable () -> Unit
 ) {
     Box(
@@ -355,7 +369,7 @@ private fun StepScaffold(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.Center)
-                .offset(y = (-24).dp)
+                .offset(y = (-48).dp)
         ) {
             Text(
                 text = "${stepIndex + 1}/$STEP_COUNT",
@@ -371,7 +385,13 @@ private fun StepScaffold(
             Spacer(modifier = Modifier.height(28.dp))
             content()
             Spacer(modifier = Modifier.height(28.dp))
-            WizardNavRow(showBack = stepIndex > 0, isLast = stepIndex == STEP_COUNT - 1, onBack = onBack, onNext = onNext)
+            WizardNavRow(
+                showBack = stepIndex > 0,
+                isLast = stepIndex == STEP_COUNT - 1,
+                onBack = onBack,
+                onNext = onNext,
+                nextEnabled = stepValid
+            )
         }
     }
 }
@@ -460,7 +480,13 @@ private fun CreditsStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () 
 // 카드 2 — 공강
 @Composable
 private fun DaysOffStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () -> Unit, onNext: () -> Unit) {
-    StepScaffold(question = "공강은 언제로\n할까요?", stepIndex = stepIndex, onBack = onBack, onNext = onNext) {
+    StepScaffold(
+        question = "공강은 언제로\n할까요?",
+        stepIndex = stepIndex,
+        onBack = onBack,
+        onNext = onNext,
+        stepValid = answers.daysOffModeSelected
+    ) {
         val specificMode = answers.daysOffMode == DaysOffMode.SPECIFIC
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -491,6 +517,7 @@ private fun DaysOffStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () 
                                 // 골라뒀던 요일들과 합쳐져서 여러 개가 한꺼번에 선택된 것처럼 보인다).
                                 answers.daysOffMode = DaysOffMode.SPECIFIC
                                 answers.specificDaysOff = setOf(day)
+                                answers.daysOffModeSelected = true
                             }
                         }
                         .padding(vertical = 14.dp),
@@ -509,12 +536,15 @@ private fun DaysOffStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () 
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(if (answers.daysOffMode == DaysOffMode.ANY_N) Primary else Surface)
-                .clickable { answers.daysOffMode = DaysOffMode.ANY_N }
+                .background(if (answers.daysOffModeSelected && answers.daysOffMode == DaysOffMode.ANY_N) Primary else Surface)
+                .clickable {
+                    answers.daysOffMode = DaysOffMode.ANY_N
+                    answers.daysOffModeSelected = true
+                }
                 .padding(vertical = 14.dp, horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val onAnyN = answers.daysOffMode == DaysOffMode.ANY_N
+            val onAnyN = answers.daysOffModeSelected && answers.daysOffMode == DaysOffMode.ANY_N
             Text(
                 text = "아무 요일이나",
                 style = MaterialTheme.typography.labelLarge,
@@ -532,6 +562,7 @@ private fun DaysOffStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () 
                             .clickable {
                                 answers.daysOffMode = DaysOffMode.ANY_N
                                 answers.anyDaysOffCount = n
+                                answers.daysOffModeSelected = true
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -553,8 +584,11 @@ private fun DaysOffStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () 
         Spacer(modifier = Modifier.height(8.dp))
         ChoiceButton(
             label = "상관없어요",
-            selected = answers.daysOffMode == DaysOffMode.ANY,
-            onClick = { answers.daysOffMode = DaysOffMode.ANY }
+            selected = answers.daysOffModeSelected && answers.daysOffMode == DaysOffMode.ANY,
+            onClick = {
+                answers.daysOffMode = DaysOffMode.ANY
+                answers.daysOffModeSelected = true
+            }
         )
     }
 }
@@ -562,19 +596,29 @@ private fun DaysOffStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () 
 // 카드 3 — 오전/오후
 @Composable
 private fun TimeOfDayStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () -> Unit, onNext: () -> Unit) {
-    StepScaffold(question = "오전 수업, 오후 수업 중\n언제가 좋으세요?", stepIndex = stepIndex, onBack = onBack, onNext = onNext) {
+    StepScaffold(
+        question = "오전 수업, 오후 수업 중\n언제가 좋으세요?",
+        stepIndex = stepIndex,
+        onBack = onBack,
+        onNext = onNext,
+        stepValid = answers.timeOfDayPrefSelected
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            ChoiceButton("오전 수업이 좋아요", answers.timeOfDayPref == TimeOfDayPref.MORNING) {
+            ChoiceButton("오전 수업이 좋아요", answers.timeOfDayPrefSelected && answers.timeOfDayPref == TimeOfDayPref.MORNING) {
                 answers.timeOfDayPref = TimeOfDayPref.MORNING
+                answers.timeOfDayPrefSelected = true
             }
-            ChoiceButton("오후 수업이 좋아요", answers.timeOfDayPref == TimeOfDayPref.AFTERNOON) {
+            ChoiceButton("오후 수업이 좋아요", answers.timeOfDayPrefSelected && answers.timeOfDayPref == TimeOfDayPref.AFTERNOON) {
                 answers.timeOfDayPref = TimeOfDayPref.AFTERNOON
+                answers.timeOfDayPrefSelected = true
             }
-            ChoiceButton("적당히 섞어주세요", answers.timeOfDayPref == TimeOfDayPref.MIXED) {
+            ChoiceButton("적당히 섞어주세요", answers.timeOfDayPrefSelected && answers.timeOfDayPref == TimeOfDayPref.MIXED) {
                 answers.timeOfDayPref = TimeOfDayPref.MIXED
+                answers.timeOfDayPrefSelected = true
             }
-            ChoiceButton("상관없어요", answers.timeOfDayPref == TimeOfDayPref.ANY) {
+            ChoiceButton("상관없어요", answers.timeOfDayPrefSelected && answers.timeOfDayPref == TimeOfDayPref.ANY) {
                 answers.timeOfDayPref = TimeOfDayPref.ANY
+                answers.timeOfDayPrefSelected = true
             }
         }
     }
@@ -657,13 +701,21 @@ private fun RatioStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () ->
 // 카드 5 — 추가 옵션
 @Composable
 private fun ExtraOptionsStep(answers: AiTimetableAnswers, stepIndex: Int, onBack: () -> Unit, onNext: () -> Unit) {
-    StepScaffold(question = "추가로 원하는\n옵션이 있나요?", stepIndex = stepIndex, onBack = onBack, onNext = onNext) {
+    StepScaffold(
+        question = "추가로 원하는\n옵션이 있나요?",
+        stepIndex = stepIndex,
+        onBack = onBack,
+        onNext = onNext,
+        stepValid = answers.extraOptionSelected
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            ChoiceButton("꿀강의 위주로 담아주세요!", answers.preferEasyLectures) {
+            ChoiceButton("꿀강의 위주로 담아주세요!", answers.extraOptionSelected && answers.preferEasyLectures) {
                 answers.preferEasyLectures = true
+                answers.extraOptionSelected = true
             }
-            ChoiceButton("상관없어요", !answers.preferEasyLectures) {
+            ChoiceButton("상관없어요", answers.extraOptionSelected && !answers.preferEasyLectures) {
                 answers.preferEasyLectures = false
+                answers.extraOptionSelected = true
             }
         }
     }

@@ -10,18 +10,24 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -98,14 +104,17 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
         selectedPath = null
     }
 
-    // 딥링크로 특정 섹션(알림이 온 섹션)이 지정돼 들어왔으면 그 섹션만 펼친 채로 시작한다.
-    var academicExpanded by remember { mutableStateOf(initialSection == null || initialSection == NoticeSection.ACADEMIC) }
-    var lectureExpanded by remember { mutableStateOf(initialSection == NoticeSection.LECTURE_TIMETABLE) }
-    var mileageExpanded by remember { mutableStateOf(initialSection == NoticeSection.MILEAGE) }
+    // 딥링크로 특정 섹션(알림이 온 섹션)이 지정돼 들어왔으면 그 섹션이 선택된 채로 시작한다.
+    var selectedSection by remember { mutableStateOf(initialSection ?: NoticeSection.ACADEMIC) }
 
-    var academicWatch by remember { mutableStateOf(noticeWatchStore.isEnabled(NoticeSection.ACADEMIC)) }
-    var lectureWatch by remember { mutableStateOf(noticeWatchStore.isEnabled(NoticeSection.LECTURE_TIMETABLE)) }
-    var mileageWatch by remember { mutableStateOf(noticeWatchStore.isEnabled(NoticeSection.MILEAGE)) }
+    // 섹션별로 따로 켜고 끄던 걸 그만두고 하나로 통합 — 셋 다 켜져 있을 때만 "켜짐"으로 보여준다.
+    var allNoticesWatch by remember {
+        mutableStateOf(
+            noticeWatchStore.isEnabled(NoticeSection.ACADEMIC) &&
+                noticeWatchStore.isEnabled(NoticeSection.LECTURE_TIMETABLE) &&
+                noticeWatchStore.isEnabled(NoticeSection.MILEAGE)
+        )
+    }
 
     fun toggleWatch(section: NoticeSection, enabled: Boolean, currentDetailPaths: List<String>) {
         noticeWatchStore.setEnabled(section, enabled)
@@ -117,6 +126,13 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
         } else if (!noticeWatchStore.anyEnabled()) {
             NoticeWatchScheduler.cancel(context)
         }
+    }
+
+    fun toggleAllWatch(enabled: Boolean) {
+        allNoticesWatch = enabled
+        toggleWatch(NoticeSection.ACADEMIC, enabled, noticeViewModel.notices.map { it.detailPath })
+        toggleWatch(NoticeSection.LECTURE_TIMETABLE, enabled, lectureTimetableViewModel.notices.map { it.detailPath })
+        toggleWatch(NoticeSection.MILEAGE, enabled, mileageViewModel.items.map { it.notice.detailPath })
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -146,75 +162,39 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
                         .padding(horizontal = 16.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    NoticeAccordionSection(
-                        title = NoticeSection.ACADEMIC.displayName,
-                        expanded = academicExpanded,
-                        onToggleExpand = { academicExpanded = !academicExpanded },
-                        watchEnabled = academicWatch,
-                        onToggleWatch = { checked ->
-                            academicWatch = checked
-                            toggleWatch(NoticeSection.ACADEMIC, checked, noticeViewModel.notices.map { it.detailPath })
+                    NoticeSectionWatchRow(watchEnabled = allNoticesWatch, onToggleWatch = ::toggleAllWatch)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    NoticeSectionSwitcher(selected = selectedSection, onSelect = { selectedSection = it })
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    AnimatedContent(targetState = selectedSection, label = "noticeSectionContent") { section ->
+                        Column {
+                            when (section) {
+                                NoticeSection.ACADEMIC -> NoticeListColumn(
+                                    notices = noticeViewModel.notices.take(5),
+                                    isLoading = noticeViewModel.isLoading,
+                                    errorMessage = noticeViewModel.errorMessage,
+                                    onSelect = { path -> selectedPath = path; selectedRequiresLogin = false }
+                                )
+                                NoticeSection.LECTURE_TIMETABLE -> NoticeListColumn(
+                                    notices = lectureTimetableViewModel.notices,
+                                    isLoading = lectureTimetableViewModel.isLoading,
+                                    errorMessage = lectureTimetableViewModel.errorMessage,
+                                    onSelect = { path -> selectedPath = path; selectedRequiresLogin = true }
+                                )
+                                NoticeSection.MILEAGE -> MileageNoticeListColumn(
+                                    items = mileageViewModel.items,
+                                    isLoading = mileageViewModel.isLoading,
+                                    errorMessage = mileageViewModel.errorMessage,
+                                    onSelect = { path -> selectedPath = path; selectedRequiresLogin = false },
+                                    onCheckClick = { item -> mileageViewModel.checkEligibility(item) }
+                                )
+                            }
                         }
-                    ) {
-                        NoticeListColumn(
-                            notices = noticeViewModel.notices.take(5),
-                            isLoading = noticeViewModel.isLoading,
-                            errorMessage = noticeViewModel.errorMessage,
-                            onSelect = { path -> selectedPath = path; selectedRequiresLogin = false }
-                        )
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    NoticeAccordionSection(
-                        title = NoticeSection.LECTURE_TIMETABLE.displayName,
-                        expanded = lectureExpanded,
-                        onToggleExpand = { lectureExpanded = !lectureExpanded },
-                        watchEnabled = lectureWatch,
-                        onToggleWatch = { checked ->
-                            lectureWatch = checked
-                            toggleWatch(
-                                NoticeSection.LECTURE_TIMETABLE,
-                                checked,
-                                lectureTimetableViewModel.notices.map { it.detailPath }
-                            )
-                        }
-                    ) {
-                        NoticeListColumn(
-                            notices = lectureTimetableViewModel.notices,
-                            isLoading = lectureTimetableViewModel.isLoading,
-                            errorMessage = lectureTimetableViewModel.errorMessage,
-                            onSelect = { path -> selectedPath = path; selectedRequiresLogin = true }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    NoticeAccordionSection(
-                        title = NoticeSection.MILEAGE.displayName,
-                        expanded = mileageExpanded,
-                        onToggleExpand = { mileageExpanded = !mileageExpanded },
-                        watchEnabled = mileageWatch,
-                        onToggleWatch = { checked ->
-                            mileageWatch = checked
-                            toggleWatch(
-                                NoticeSection.MILEAGE,
-                                checked,
-                                mileageViewModel.items.map { it.notice.detailPath }
-                            )
-                        }
-                    ) {
-                        MileageNoticeListColumn(
-                            items = mileageViewModel.items,
-                            isLoading = mileageViewModel.isLoading,
-                            errorMessage = mileageViewModel.errorMessage,
-                            onSelect = { path -> selectedPath = path; selectedRequiresLogin = false },
-                            onCheckClick = { item -> mileageViewModel.checkEligibility(item) }
-                        )
-                    }
-
-                    // 마지막 섹션(마일리지) 바로 아래에서 스크롤이 끝나버리면 답답해 보여서,
-                    // 섹션 하나 분량만큼 여백을 더 둬서 스크롤할 여지를 넉넉하게 남긴다.
+                    // 화면 하단에서 스크롤이 끝나버리면 답답해 보여서, 섹션 하나 분량만큼 여백을
+                    // 더 둬서 스크롤할 여지를 넉넉하게 남긴다.
                     Spacer(modifier = Modifier.height(320.dp))
                 }
             } else {
@@ -241,52 +221,81 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
     }
 }
 
+/** 학사공지/종합강의시간표/마일리지 세로 아코디언 대신, 지도교수 상담 다이얼로그의 세그먼트
+ *  스위처와 같은 방식으로 가로 탭 3개 중 하나를 고르면 그 알약(pill) 모양 배경이 스르륵
+ *  옆으로 미끄러지듯 이동한다. */
 @Composable
-private fun NoticeAccordionSection(
-    title: String,
-    expanded: Boolean,
-    onToggleExpand: () -> Unit,
-    watchEnabled: Boolean,
-    onToggleWatch: (Boolean) -> Unit,
-    content: @Composable () -> Unit
-) {
-    Column {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Row(
-                modifier = Modifier.clickable(onClick = onToggleExpand),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = title, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = if (expanded) "▾" else "▸",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextSecondary
+private fun NoticeSectionSwitcher(selected: NoticeSection, onSelect: (NoticeSection) -> Unit) {
+    val sections = remember { NoticeSection.entries.toList() }
+    val targetIndex = sections.indexOf(selected).toFloat()
+    val indexFraction by animateFloatAsState(targetValue = targetIndex, label = "noticeSectionIndicator")
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface)
+            .padding(4.dp)
+    ) {
+        val tabWidth = maxWidth / sections.size
+        Box(
+            modifier = Modifier
+                .offset(x = tabWidth * indexFraction)
+                .width(tabWidth)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Primary)
+        )
+        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            sections.forEach { section ->
+                NoticeSectionTab(
+                    label = section.displayName,
+                    selected = section == selected,
+                    onClick = { onSelect(section) },
+                    modifier = Modifier.weight(1f).fillMaxHeight()
                 )
             }
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "새 글 알림 받기",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Switch(
-                checked = watchEnabled,
-                onCheckedChange = onToggleWatch,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = OnPrimary,
-                    checkedTrackColor = Primary,
-                    uncheckedThumbColor = TextSecondary,
-                    uncheckedTrackColor = Background,
-                    uncheckedBorderColor = Border
-                )
-            )
         }
-        if (expanded) {
-            Spacer(modifier = Modifier.height(8.dp))
-            content()
-        }
+    }
+}
+
+@Composable
+private fun NoticeSectionTab(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val textColor by animateColorAsState(targetValue = if (selected) OnPrimary else TextSecondary, label = "noticeSectionTabText")
+    Box(modifier = modifier.clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = textColor,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun NoticeSectionWatchRow(watchEnabled: Boolean, onToggleWatch: (Boolean) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = "새 글 알림 받기",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Switch(
+            checked = watchEnabled,
+            onCheckedChange = onToggleWatch,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = OnPrimary,
+                checkedTrackColor = Primary,
+                uncheckedThumbColor = TextSecondary,
+                uncheckedTrackColor = Background,
+                uncheckedBorderColor = Border
+            )
+        )
     }
 }
 

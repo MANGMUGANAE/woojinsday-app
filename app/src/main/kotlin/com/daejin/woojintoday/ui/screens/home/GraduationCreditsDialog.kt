@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -354,14 +355,22 @@ private fun GraduationCreditGauge(
     ) {
         Text(text = "총 이수학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Spacer(modifier = Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Row는 자식을 순서대로 배치하면서 남는 폭만 뒤쪽 자식에게 넘기는 방식이라, 세 원의
+        // dp 합이 카드 폭을 넘는 화면(좁은 폰)에서는 맨 뒤(복수전공)만 남은 자투리 폭으로
+        // 찌그러져 작아 보였다 — 양옆 두 원을 weight(1f)로 동일하게 나눠 가지는 폭에 딱 맞게
+        // (aspectRatio 1:1) 그려서, 화면 폭이 얼마든 항상 서로 같은 크기·대칭이 되도록 한다.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { onSelect("주전공") }
+                modifier = Modifier.weight(1f).clickable { onSelect("주전공") }
             ) {
                 CreditGaugeRing(
-                    sizeDp = MAJOR_GAUGE_SIZE * MINOR_GAUGE_SCALE,
-                    strokeWidth = MAJOR_GAUGE_STROKE * MINOR_GAUGE_SCALE,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    strokeWidth = MINOR_GAUGE_STROKE,
                     color = MinorColor,
                     fraction = 0f,
                     earnedText = majorEarnedText,
@@ -373,7 +382,7 @@ private fun GraduationCreditGauge(
                 Text(text = "주전공", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             CreditGaugeRing(
-                sizeDp = MAJOR_GAUGE_SIZE,
+                modifier = Modifier.size(MAJOR_GAUGE_SIZE),
                 strokeWidth = MAJOR_GAUGE_STROKE,
                 color = Primary,
                 fraction = fraction,
@@ -384,11 +393,11 @@ private fun GraduationCreditGauge(
             )
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { onSelect("복수전공") }
+                modifier = Modifier.weight(1f).clickable { onSelect("복수전공") }
             ) {
                 CreditGaugeRing(
-                    sizeDp = MAJOR_GAUGE_SIZE * MINOR_GAUGE_SCALE,
-                    strokeWidth = MAJOR_GAUGE_STROKE * MINOR_GAUGE_SCALE,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    strokeWidth = MINOR_GAUGE_STROKE,
                     color = MinorColor,
                     fraction = minorFraction,
                     earnedText = minorEarnedText,
@@ -416,13 +425,13 @@ private fun GraduationCreditGauge(
 
 private val MAJOR_GAUGE_SIZE = 150.dp
 private val MAJOR_GAUGE_STROKE = 16.dp
-private const val MINOR_GAUGE_SCALE = 0.6f
+private val MINOR_GAUGE_STROKE = 10.dp
 
 /** 원형 게이지 하나 — 링 자체는 기준학점 대비 취득 비율을 채우고, 안쪽엔 취득/기준 학점을
  *  텍스트로 보여준다. 주전공/부전공 게이지가 같은 모양을 크기만 다르게 재사용한다. */
 @Composable
 private fun CreditGaugeRing(
-    sizeDp: Dp,
+    modifier: Modifier,
     strokeWidth: Dp,
     color: Color,
     fraction: Float,
@@ -437,7 +446,7 @@ private fun CreditGaugeRing(
         animatedFraction.animateTo(fraction, animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing))
     }
 
-    Box(modifier = Modifier.size(sizeDp), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokePx = strokeWidth.toPx()
             val diameter = size.minDimension - strokePx

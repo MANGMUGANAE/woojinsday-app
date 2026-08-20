@@ -668,7 +668,10 @@ private fun NoticeDetailWebView(
                         loadUrl(url)
                     }
                 }
-            }
+            },
+            // WebView는 View만 없앤다고 네이티브 메모리가 안 풀려서, 화면을 떠날 때 명시적으로
+            // destroy()를 불러줘야 한다(안 그러면 다이얼로그를 여러 번 열고 닫을 때마다 샌다).
+            onRelease = { webView -> webView.destroy() }
         )
     }
 }

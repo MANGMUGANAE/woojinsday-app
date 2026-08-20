@@ -76,6 +76,8 @@ data class TranscriptDetail(
     val requirements: List<GraduationRequirement>,
     // 교양선택(교선)은 "교양영역"(1~9, A/B/C, 실용/외국어/심화)별로도 기준·취득 학점이 따로 있다.
     val areaRequirements: List<GraduationRequirement>,
+    // 리포트 하단의 "1. 학생의 졸업 사정 적용 기준년도는..." 같은 안내 문구(번호가 매겨진 문단들).
+    val notes: List<String>,
     val rawCells: List<RawCell>,
     val rawLines: List<RawLine>,
     val rawRects: List<RawRect>
@@ -125,6 +127,7 @@ class AcademicTranscriptClient(
                 rows = parseTranscriptRows(cells),
                 requirements = parseRequirementTable(cells, headerLabel = "구분"),
                 areaRequirements = parseRequirementTable(cells, headerLabel = "교양영역"),
+                notes = parseNotes(cells),
                 rawCells = parseRawCells(mml, head),
                 rawLines = parseRawLines(mml, head),
                 rawRects = parseRawRects(mml, head)
@@ -132,7 +135,7 @@ class AcademicTranscriptClient(
             Log.d(
                 TAG,
                 "이수구분표 파싱된 과목 수=${detail.rows.size}, 기준표 항목 수=${detail.requirements.size}, " +
-                    "교양영역 항목 수=${detail.areaRequirements.size}"
+                    "교양영역 항목 수=${detail.areaRequirements.size}, 안내문구 수=${detail.notes.size}"
             )
             TranscriptDetailResult.Success(detail)
         } catch (e: IOException) {
@@ -360,6 +363,40 @@ class AcademicTranscriptClient(
         }
     }
 
+    /** 리포트 하단의 "① 학생의 졸업사정 적용 교육과정 기준년도는..." 같은, 원문자(①②③...)로
+     *  번호가 매겨진 안내 문구를 찾는다. 줄(`to` 같음)마다 그 줄의 셀들을 왼쪽부터(`le`) 이어붙여
+     *  문장을 복원하고, 원문자로 시작하는 줄을 새 문단 시작으로, 그 사이 줄바꿈(긴 문장이 여러
+     *  줄로 접힌 것)은 같은 문단에 이어붙인다. 안내 문구 바로 다음엔 졸업사정 기준표("구분"으로
+     *  시작하는 헤더줄)가 이어지므로, 그 줄을 만나면 안내 문구가 끝난 것으로 보고 멈춘다. */
+    private fun parseNotes(cells: List<MmlCell>): List<String> {
+        val rows = cells.groupBy { it.to }
+            .toSortedMap()
+            .values
+            .map { rowCells -> rowCells.sortedBy { it.le } }
+
+        val notes = mutableListOf<String>()
+        val current = StringBuilder()
+        var collecting = false
+        for (row in rows) {
+            val line = row.joinToString("") { it.text }.trim()
+            if (line.isEmpty()) continue
+
+            val firstCellText = row.first().text.replace(" ", "")
+            if (collecting && (firstCellText == "구분" || firstCellText == "교양영역")) break
+
+            if (NOTE_MARKER_REGEX.containsMatchIn(line.take(1))) {
+                if (current.isNotEmpty()) notes += current.toString().trim()
+                current.clear()
+                current.append(line)
+                collecting = true
+            } else if (collecting) {
+                current.append(" ").append(line)
+            }
+        }
+        if (current.isNotEmpty()) notes += current.toString().trim()
+        return notes
+    }
+
     private fun decodeEntities(text: String): String = text
         .replace("&lt;", "<")
         .replace("&gt;", ">")
@@ -385,5 +422,7 @@ class AcademicTranscriptClient(
         private val FA_REGEX = Regex("""<FA\s+([^/>]*)/>""")
         private val LN_REGEX = Regex("""<LN\s+([^/>]*)/>""")
         private val RA_REGEX = Regex("""<RA\s+([^/>]*)/>""")
+        // 원문자 ①~⑨ (U+2460~U+2468) — 리포트 하단 안내 문구가 이 문자로 번호 매겨져 있다.
+        private val NOTE_MARKER_REGEX = Regex("[①-⑨]")
     }
 }

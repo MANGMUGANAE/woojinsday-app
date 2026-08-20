@@ -1,33 +1,41 @@
 package com.daejin.woojintoday.ui.screens.home
 
 import android.graphics.Color as AndroidColor
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -35,11 +43,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -79,6 +90,7 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val viewModel: GraduationCreditsViewModel = viewModel(factory = GraduationCreditsViewModel.Factory(context))
     val detail = viewModel.detail
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier.fillMaxSize().background(Background)) {
@@ -99,15 +111,16 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
                     .padding(horizontal = 20.dp)
             ) {
                 when {
-                    viewModel.isLoading -> GraduationMessageBox { CircularProgressIndicator(color = Primary) }
+                    viewModel.isLoading -> GraduationSkeleton()
                     viewModel.errorMessage != null && detail == null ->
                         GraduationMessageBox {
                             Text(viewModel.errorMessage.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
                     detail != null -> {
-                        // 총 이수학점 카드는 고정, 그 아래 이수구분 목록만 내부 스크롤된다 — 카드와
-                        // 목록 사이 간격은 스크롤 밖(고정 영역)에 있어서 스크롤해도 그대로 유지된다.
-                        GraduationTotalCard(detail = detail, onShowRaw = { viewModel.openRawTable() })
+                        // 총 이수학점 게이지는 고정, 그 아래 이수구분 카드/교양영역 표만 내부
+                        // 스크롤된다 — 게이지와 카드 사이 간격은 스크롤 밖(고정 영역)에 있어서
+                        // 스크롤해도 그대로 유지된다.
+                        GraduationCreditGauge(detail = detail)
                         Spacer(modifier = Modifier.height(16.dp))
                         Column(
                             modifier = Modifier
@@ -115,20 +128,24 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                viewModel.rowsByCategory.forEach { (category, categoryRows) ->
-                                    val requirement = detail.requirements.find { it.label == category }
-                                    GraduationCategorySection(
-                                        category = category,
-                                        requirement = requirement,
-                                        rows = categoryRows,
-                                        areaRequirements = if (category == "교선") detail.areaRequirements else emptyList()
-                                    )
-                                }
+                            GraduationCategoryScrollRow(
+                                rowsByCategory = viewModel.rowsByCategory,
+                                requirements = detail.requirements,
+                                onSelect = { category -> selectedCategory = category }
+                            )
+
+                            if (detail.areaRequirements.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(20.dp))
+                                GraduationAreaTable(areaRequirements = detail.areaRequirements)
                             }
 
-                            // 화면 맨 끝에서 바로 스크롤이 끊기지 않게 여백을 더 둔다.
-                            Spacer(modifier = Modifier.height(140.dp))
+                            if (detail.notes.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(20.dp))
+                                GraduationNotesSection(notes = detail.notes)
+                            }
+
+                            // 화면 맨 끝에서 바로 스크롤이 끊기지 않게, 카드 하나 정도의 여백을 더 둔다.
+                            Spacer(modifier = Modifier.height(GraduationCategoryCardHeight))
                         }
                     }
                 }
@@ -146,6 +163,16 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
             onDismiss = { viewModel.dismissRawTable() }
         )
     }
+
+    val category = selectedCategory
+    if (category != null && detail != null) {
+        GraduationCategoryDetailDialog(
+            category = category,
+            requirement = detail.requirements.find { it.label == category },
+            rows = viewModel.rowsByCategory.find { it.first == category }?.second.orEmpty(),
+            onDismiss = { selectedCategory = null }
+        )
+    }
 }
 
 @Composable
@@ -155,112 +182,279 @@ private fun GraduationMessageBox(content: @Composable () -> Unit) {
     }
 }
 
+/** 데이터가 아직 없을 때, 실제 화면(게이지 카드/이수구분 카드 줄/영역별 표)과 같은 모양의 뼈대를
+ *  숨쉬듯 깜빡이는 채로 먼저 보여준다. */
 @Composable
-private fun GraduationTotalCard(detail: TranscriptDetail, onShowRaw: () -> Unit) {
+private fun GraduationSkeleton() {
+    val transition = rememberInfiniteTransition(label = "graduationSkeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "graduationSkeletonAlpha"
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Surface)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SkeletonBlock(width = 70.dp, height = 12.dp, alpha = alpha)
+            Spacer(modifier = Modifier.height(14.dp))
+            SkeletonBlock(width = 150.dp, height = 150.dp, alpha = alpha, shape = CircleShape)
+            Spacer(modifier = Modifier.height(14.dp))
+            SkeletonBlock(width = 120.dp, height = 14.dp, alpha = alpha)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(4) {
+                Column(
+                    modifier = Modifier
+                        .width(GraduationCategoryCardWidth)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Surface)
+                        .padding(16.dp)
+                ) {
+                    SkeletonBlock(width = 40.dp, height = 14.dp, alpha = alpha)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SkeletonBlock(width = 70.dp, height = 18.dp, alpha = alpha)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SkeletonBlock(width = 50.dp, height = 12.dp, alpha = alpha)
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Surface)
+                .padding(16.dp)
+        ) {
+            SkeletonBlock(width = 100.dp, height = 14.dp, alpha = alpha)
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(6) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        SkeletonBlock(width = 32.dp, height = 10.dp, alpha = alpha)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        SkeletonBlock(width = 28.dp, height = 12.dp, alpha = alpha)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonBlock(width: Dp, height: Dp, alpha: Float, shape: Shape = RoundedCornerShape(6.dp)) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .alpha(alpha)
+            .clip(shape)
+            .background(Background)
+    )
+}
+
+/** 총 이수학점을 원형 게이지로 보여준다 — 링 안쪽에 취득/기준 학점을, 링 자체는 기준학점 대비
+ *  취득 비율을 채워서 시각적으로 보여준다. */
+@Composable
+private fun GraduationCreditGauge(detail: TranscriptDetail) {
     val totalReq = detail.requirements.find { it.label == "졸업학점" }
     val gpaReq = detail.requirements.find { it.label == "졸업평점평균" }
-    val earned = totalReq?.earnedValue ?: formatCredits(detail.rows.sumOf { it.credit })
-    val required = totalReq?.requiredValue
+    val earnedText = totalReq?.earnedValue ?: formatCredits(detail.rows.sumOf { it.credit })
+    val requiredText = totalReq?.requiredValue
+    val fraction = remember(earnedText, requiredText) {
+        val earnedValue = earnedText.toDoubleOrNull() ?: 0.0
+        val requiredValue = requiredText?.toDoubleOrNull()
+        if (requiredValue != null && requiredValue > 0) (earnedValue / requiredValue).toFloat().coerceIn(0f, 1f) else 0f
+    }
+    // 화면에 들어올 때 0에서 실제 값까지 링이 자연스럽게 채워지도록 애니메이션.
+    val animatedFraction = remember { Animatable(0f) }
+    LaunchedEffect(fraction) {
+        animatedFraction.animateTo(fraction, animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing))
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(Surface)
-            .padding(20.dp)
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "총 이수학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = Primary)) { append(earned) }
-                        withStyle(SpanStyle(color = TextSecondary)) { append(if (required != null) "/${required}학점" else "학점") }
-                    },
-                    style = MaterialTheme.typography.titleLarge
+        Text(text = "총 이수학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        Spacer(modifier = Modifier.height(14.dp))
+        Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeWidth = 16.dp.toPx()
+                val diameter = size.minDimension - strokeWidth
+                val arcTopLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+                val arcSize = Size(diameter, diameter)
+                drawArc(
+                    color = Background,
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                 )
-                if (gpaReq?.earnedValue != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = TextSecondary)) { append("졸업평점 ") }
-                            withStyle(SpanStyle(color = Primary)) { append(gpaReq.earnedValue) }
-                            withStyle(SpanStyle(color = TextSecondary)) { append("/${gpaReq.requiredValue ?: "-"}") }
-                        },
-                        style = MaterialTheme.typography.bodyMedium
+                if (animatedFraction.value > 0f) {
+                    drawArc(
+                        color = Primary,
+                        startAngle = -90f,
+                        sweepAngle = 360f * animatedFraction.value,
+                        useCenter = false,
+                        topLeft = arcTopLeft,
+                        size = arcSize,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                     )
                 }
             }
-//            Text(
-//                text = "이수구분표 원본",
-//                style = MaterialTheme.typography.labelMedium,
-//                color = Primary,
-//                modifier = Modifier
-//                    .clip(RoundedCornerShape(50))
-//                    .background(Background)
-//                    .clickable(onClick = onShowRaw)
-//                    .padding(horizontal = 14.dp, vertical = 10.dp)
-//            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = Primary)) { append(earnedText) }
+                        withStyle(SpanStyle(color = TextSecondary)) { append(if (requiredText != null) "/$requiredText" else "") }
+                    },
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(text = "학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+        }
+        if (gpaReq?.earnedValue != null) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = TextSecondary)) { append("졸업평점 ") }
+                    withStyle(SpanStyle(color = Primary)) { append(gpaReq.earnedValue) }
+                    withStyle(SpanStyle(color = TextSecondary)) { append("/${gpaReq.requiredValue ?: "-"}") }
+                },
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 }
 
-/** 이수구분 하나 — 헤더(구분명/기준 대비 취득학점/과목수)를 누르면 실제 들은 과목 목록이 펼쳐진다.
- *  과목이 하나도 없는 구분도 그대로 보여준다(펼쳐도 안내 문구만 나옴). 기준학점 정보가 없는
- *  구분(일선/교직 — 리포트의 졸업사정 표에 아예 없는 항목)은 "기준" 없이 취득학점만 보여준다.
- *  교선(교양선택)은 교양영역(1~9, A/B/C, 실용/외국어/심화)별 기준·취득도 같이 보여준다. */
+// 카드 하나의 너비/높이 — 스크롤 영역 맨 아래 여백(카드 하나 세로폭)에도 그대로 재사용한다.
+private val GraduationCategoryCardWidth = 130.dp
+private val GraduationCategoryCardHeight = 150.dp
+
+/** 이수구분(교필/교선/일선/전필/전선/전기/교직)마다 카드 하나 — 가로로 쭉 스크롤해서 훑어보고,
+ *  카드를 누르면 그 구분에 들은 과목 전체를 모달로 띄워서 보여준다. */
 @Composable
-private fun GraduationCategorySection(
+private fun GraduationCategoryScrollRow(
+    rowsByCategory: List<Pair<String, List<TranscriptCourseRow>>>,
+    requirements: List<GraduationRequirement>,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        rowsByCategory.forEach { (category, rows) ->
+            val requirement = requirements.find { it.label == category }
+            GraduationCategoryCard(
+                category = category,
+                requirement = requirement,
+                rows = rows,
+                onClick = { onSelect(category) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GraduationCategoryCard(
     category: String,
     requirement: GraduationRequirement?,
     rows: List<TranscriptCourseRow>,
-    areaRequirements: List<GraduationRequirement>
+    onClick: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val earned = requirement?.earnedValue ?: formatCredits(rows.sumOf { it.credit })
     val required = requirement?.requiredValue
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .width(GraduationCategoryCardWidth)
             .clip(RoundedCornerShape(16.dp))
             .background(Surface)
-            .clickable { expanded = !expanded }
+            .clickable(onClick = onClick)
             .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = category, style = MaterialTheme.typography.labelLarge, color = TextPrimary)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Primary)) { append(earned) }
-                    withStyle(SpanStyle(color = TextSecondary)) {
-                        append(if (required != null) "/${required}학점 · ${rows.size}과목" else "학점 · ${rows.size}과목")
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = if (expanded) "▾" else "▸",
-                style = MaterialTheme.typography.titleSmall,
-                color = TextSecondary
-            )
-        }
+        Text(text = category, style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = buildAnnotatedString {
+                withStyle(SpanStyle(color = Primary)) { append(earned) }
+                withStyle(SpanStyle(color = TextSecondary)) { append(if (required != null) "/${required}학점" else "학점") }
+            },
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(text = "${rows.size}과목", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+    }
+}
 
-        if (expanded) {
-            if (areaRequirements.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(text = "교양영역별 기준/취득학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                Spacer(modifier = Modifier.height(8.dp))
-                GraduationAreaChips(areaRequirements)
+/** 카드를 눌렀을 때 뜨는 모달 — 그 이수구분에 들은 과목 전체를 보여준다(기존 아코디언 펼침
+ *  내용과 동일). */
+@Composable
+private fun GraduationCategoryDetailDialog(
+    category: String,
+    requirement: GraduationRequirement?,
+    rows: List<TranscriptCourseRow>,
+    onDismiss: () -> Unit
+) {
+    val earned = requirement?.earnedValue ?: formatCredits(rows.sumOf { it.credit })
+    val required = requirement?.requiredValue
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Surface)
+                .padding(20.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = category,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = Primary)) { append(earned) }
+                        withStyle(SpanStyle(color = TextSecondary)) {
+                            append(if (required != null) "/${required}학점 · ${rows.size}과목" else "학점 · ${rows.size}과목")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             if (rows.isEmpty()) {
                 Text(text = "들은 과목이 없어요", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     rows.forEach { row -> GraduationCourseRow(row) }
                 }
             }
@@ -268,30 +462,72 @@ private fun GraduationCategorySection(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** 교양영역(1~9, A/B/C, 실용/외국어/심화)별 기준·취득 학점 — 교선 카드 안에 묶지 않고, 화면
+ *  맨 아래에 표 형태로 따로 보여준다. */
 @Composable
-private fun GraduationAreaChips(areaRequirements: List<GraduationRequirement>) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        areaRequirements.forEach { area ->
-            val earned = area.earnedValue ?: "0"
-            val required = area.requiredValue ?: "0"
-            // 순수 숫자 영역(1~9)은 "1영역"처럼 보이게, A/B/C·실용·외국어·심화 같은 이름은 그대로 둔다.
-            val label = if (area.label.toIntOrNull() != null) "${area.label}영역" else area.label
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Background)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = TextPrimary)) { append("$label ") }
-                        withStyle(SpanStyle(color = Primary)) { append(earned) }
-                        withStyle(SpanStyle(color = TextPrimary)) { append("/$required") }
-                    },
-                    style = MaterialTheme.typography.labelSmall
-                )
+private fun GraduationAreaTable(areaRequirements: List<GraduationRequirement>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface)
+            .padding(16.dp)
+    ) {
+        Text(text = "영역별 이수현황", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            areaRequirements.forEachIndexed { index, area ->
+                val earned = area.earnedValue ?: "0"
+                val required = area.requiredValue ?: "0"
+                // 순수 숫자 영역(1~9)은 "1영역"처럼 보이게, A/B/C·실용·외국어·심화 같은 이름은 그대로 둔다.
+                val label = if (area.label.toIntOrNull() != null) "${area.label}영역" else area.label
+                Column(
+                    modifier = Modifier.width(64.dp).padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = Primary)) { append(earned) }
+                            withStyle(SpanStyle(color = TextSecondary)) { append("/$required") }
+                        },
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                if (index != areaRequirements.lastIndex) {
+                    Box(modifier = Modifier.width(1.dp).height(36.dp).background(Background))
+                }
             }
+        }
+    }
+}
+
+/** 리포트 하단의 "1. 학생의 졸업 사정 적용 기준년도는..." 같은 번호 매겨진 안내 문구를 그대로
+ *  보여준다. */
+@Composable
+private fun GraduationNotesSection(notes: List<String>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        notes.forEach { note ->
+            Text(text = note, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
     }
 }
@@ -322,7 +558,15 @@ private fun GraduationCourseRow(row: TranscriptCourseRow) {
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text = row.grade, style = MaterialTheme.typography.labelMedium, color = Primary)
+        // 성적 폭을 "A+" 기준으로 고정하고 왼쪽 정렬해서, "A"/"P"처럼 짧은 성적도 항상 같은
+        // x좌표에서 시작하게 한다(짧은 성적이 오른쪽 끝에 붙어 보이지 않도록).
+        Text(
+            text = row.grade,
+            style = MaterialTheme.typography.labelMedium,
+            color = Primary,
+            textAlign = TextAlign.Start,
+            modifier = Modifier.width(28.dp)
+        )
     }
 }
 

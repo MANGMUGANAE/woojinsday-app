@@ -165,14 +165,19 @@ fun MealDialog(onDismiss: () -> Unit) {
                         .fillMaxSize()
                         .padding(horizontal = 20.dp, vertical = 8.dp)
                 ) {
-                    MealDayCard(
-                        date = date,
-                        viewModel = viewModel,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .heightIn(min = 140.dp, max = maxHeight)
-                    )
+                    // 카드 자체를 한 줄만큼 낮게 잡아서, 카드 밖(카드 아래)에 항상 그만큼의 여백이
+                    // 남도록 한다 — 카드 안에서 끝까지 스크롤해도 화면 하단에 바로 붙지 않게.
+                    val cardMaxHeight = (maxHeight - MealEntryRowHeight).coerceAtLeast(140.dp)
+                    Column(modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+                        MealDayCard(
+                            date = date,
+                            viewModel = viewModel,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 140.dp, max = cardMaxHeight)
+                        )
+                        Spacer(modifier = Modifier.height(MealEntryRowHeight))
+                    }
                 }
             }
         }
@@ -296,6 +301,9 @@ private fun Modifier.uniformStartWidth(widthState: MutableIntState): Modifier = 
         placeable.placeRelative(0, 0)
     }
 }
+
+// [MealEntryRow] 한 줄 정도의 높이 — 하루치 메뉴 목록 맨 아래 여백에 쓴다.
+private val MealEntryRowHeight = 56.dp
 
 @Composable
 private fun MealEntryRow(entry: CafeteriaEntry, cornerWidthState: MutableIntState) {

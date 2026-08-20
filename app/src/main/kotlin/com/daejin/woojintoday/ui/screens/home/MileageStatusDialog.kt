@@ -124,27 +124,45 @@ fun MileageStatusDialog(onDismiss: () -> Unit) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState())
                 ) {
+                    // 스위처는 항상 고정 — 그 아래 섹션 내용만 각자 내부 스크롤된다.
                     MileageSectionSwitcher(selected = selectedSection, onSelect = { selectedSection = it })
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    AnimatedContent(targetState = selectedSection, label = "mileageSectionContent") { section ->
+                    AnimatedContent(
+                        targetState = selectedSection,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        label = "mileageSectionContent"
+                    ) { section ->
                         when (section) {
-                            MileageSection.STATUS -> Column {
+                            MileageSection.STATUS -> Column(modifier = Modifier.fillMaxSize()) {
+                                // "나의 마일리지 순위" 요약은 고정, 지급 내역만 내부 스크롤된다.
                                 MileageSummarySection(
                                     summary = statusViewModel.summary,
                                     isLoading = statusViewModel.isLoading,
                                     errorMessage = statusViewModel.errorMessage
                                 )
                                 Spacer(modifier = Modifier.height(20.dp))
-                                MileageHistorySection(
-                                    entries = statusViewModel.history,
-                                    isLoading = statusViewModel.isLoading,
-                                    errorMessage = statusViewModel.errorMessage
-                                )
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    MileageHistorySection(
+                                        entries = statusViewModel.history,
+                                        isLoading = statusViewModel.isLoading,
+                                        errorMessage = statusViewModel.errorMessage
+                                    )
+                                    // 목록 맨 끝에서 바로 스크롤이 끊기지 않게, 항목 하나만큼의 여백을 더 둔다.
+                                    Spacer(modifier = Modifier.height(MileageHistoryItemHeight))
+                                }
                             }
-                            MileageSection.SCHOLARSHIP -> {
+                            MileageSection.SCHOLARSHIP -> Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                            ) {
                                 // "대상자 확인" 버튼이 뜨는(=xlsx 명단이 첨부된) 글만 추려서 보여준다 —
                                 // 시행 안내처럼 버튼이 안 뜨는 글은 이 화면에서는 굳이 안 보여줘도 된다.
                                 MileageNoticeListColumn(
@@ -154,12 +172,11 @@ fun MileageStatusDialog(onDismiss: () -> Unit) {
                                     onSelect = { path -> selectedPath = path },
                                     onCheckClick = { item -> mileageViewModel.checkEligibility(item) }
                                 )
+                                // 화면 맨 끝에서 바로 스크롤이 끊기지 않게 여백을 더 둔다.
+                                Spacer(modifier = Modifier.height(72.dp))
                             }
                         }
                     }
-
-                    // 화면 맨 끝에서 바로 스크롤이 끊기지 않게 여백을 더 둔다.
-                    Spacer(modifier = Modifier.height(72.dp))
                 }
             } else {
                 MileageNoticeDetailWebView(
@@ -408,6 +425,9 @@ private fun AutoHeightHorizontalPager(
         }
     }
 }
+
+// [MileageHistoryRow] 한 줄 정도의 높이 — 지급 내역 목록 맨 아래 여백에 쓴다.
+private val MileageHistoryItemHeight = 56.dp
 
 @Composable
 private fun MileageHistoryRow(entry: MileageHistoryEntry) {

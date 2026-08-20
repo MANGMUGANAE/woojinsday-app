@@ -97,7 +97,6 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 20.dp)
-                    .verticalScroll(rememberScrollState())
             ) {
                 when {
                     viewModel.isLoading -> GraduationMessageBox { CircularProgressIndicator(color = Primary) }
@@ -106,24 +105,33 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
                             Text(viewModel.errorMessage.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
                     detail != null -> {
+                        // 총 이수학점 카드는 고정, 그 아래 이수구분 목록만 내부 스크롤된다 — 카드와
+                        // 목록 사이 간격은 스크롤 밖(고정 영역)에 있어서 스크롤해도 그대로 유지된다.
                         GraduationTotalCard(detail = detail, onShowRaw = { viewModel.openRawTable() })
                         Spacer(modifier = Modifier.height(16.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            viewModel.rowsByCategory.forEach { (category, categoryRows) ->
-                                val requirement = detail.requirements.find { it.label == category }
-                                GraduationCategorySection(
-                                    category = category,
-                                    requirement = requirement,
-                                    rows = categoryRows,
-                                    areaRequirements = if (category == "교선") detail.areaRequirements else emptyList()
-                                )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                viewModel.rowsByCategory.forEach { (category, categoryRows) ->
+                                    val requirement = detail.requirements.find { it.label == category }
+                                    GraduationCategorySection(
+                                        category = category,
+                                        requirement = requirement,
+                                        rows = categoryRows,
+                                        areaRequirements = if (category == "교선") detail.areaRequirements else emptyList()
+                                    )
+                                }
                             }
+
+                            // 화면 맨 끝에서 바로 스크롤이 끊기지 않게 여백을 더 둔다.
+                            Spacer(modifier = Modifier.height(140.dp))
                         }
                     }
                 }
-
-                // 화면 맨 끝에서 바로 스크롤이 끊기지 않게 여백을 더 둔다.
-                Spacer(modifier = Modifier.height(140.dp))
             }
         }
         }
@@ -293,9 +301,7 @@ private fun GraduationCourseRow(row: TranscriptCourseRow) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Background)
-            .padding(12.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {

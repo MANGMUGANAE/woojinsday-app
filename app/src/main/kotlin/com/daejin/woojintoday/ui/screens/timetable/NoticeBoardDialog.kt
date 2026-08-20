@@ -160,15 +160,23 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState())
                 ) {
+                    // 알림 토글 + 탭 스위처는 항상 고정, 그 아래 목록만 내부 스크롤된다.
                     NoticeSectionWatchRow(watchEnabled = allNoticesWatch, onToggleWatch = ::toggleAllWatch)
                     Spacer(modifier = Modifier.height(12.dp))
                     NoticeSectionSwitcher(selected = selectedSection, onSelect = { selectedSection = it })
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    AnimatedContent(targetState = selectedSection, label = "noticeSectionContent") { section ->
-                        Column {
+                    AnimatedContent(
+                        targetState = selectedSection,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        label = "noticeSectionContent"
+                    ) { section ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                        ) {
                             when (section) {
                                 NoticeSection.ACADEMIC -> NoticeListColumn(
                                     notices = noticeViewModel.notices.take(5),
@@ -190,12 +198,12 @@ fun NoticeBoardDialog(onDismiss: () -> Unit, initialSection: NoticeSection? = nu
                                     onCheckClick = { item -> mileageViewModel.checkEligibility(item) }
                                 )
                             }
+
+                            // 화면 하단에서 스크롤이 끝나버리면 답답해 보여서, 항목 하나 분량만큼 여백을
+                            // 더 둬서 스크롤할 여지를 넉넉하게 남긴다.
+                            Spacer(modifier = Modifier.height(72.dp))
                         }
                     }
-
-                    // 화면 하단에서 스크롤이 끝나버리면 답답해 보여서, 섹션 하나 분량만큼 여백을
-                    // 더 둬서 스크롤할 여지를 넉넉하게 남긴다.
-                    Spacer(modifier = Modifier.height(320.dp))
                 }
             } else {
                 NoticeDetailWebView(

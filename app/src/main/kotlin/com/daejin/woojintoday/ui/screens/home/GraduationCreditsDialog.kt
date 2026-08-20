@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -117,10 +118,32 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
                             Text(viewModel.errorMessage.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
                     detail != null -> {
+                        // 주전공은 전필+전선 과목을 합친 것 — 기준학점은 복수전공/부전공 여부나
+                        // 학번마다 달라져서 하나로 특정할 수 없으므로 아예 표시하지 않는다(취득만).
+                        val majorRows = remember(detail) {
+                            detail.rows.filter { it.category == "전필" || it.category == "전선" }
+                        }
+                        val majorEarnedText = remember(majorRows) { formatCredits(majorRows.sumOf { it.credit }) }
+
+                        // 복수전공은 이수구분표엔 없고, 과목이 "복필"/"복선"으로 따로 들어오는 걸
+                        // 모아서 만든다 — 취득학점은 그 과목들 학점 합, 기준학점은 졸업사정
+                        // 기준표의 "복전" 항목 값을 그대로 쓴다.
+                        val minorRows = remember(detail) {
+                            detail.rows.filter { it.category == "복필" || it.category == "복선" }
+                        }
+                        val minorEarnedText = remember(minorRows) { formatCredits(minorRows.sumOf { it.credit }) }
+                        val minorRequiredText = detail.requirements.find { it.label == "복전" }?.requiredValue
+
                         // 총 이수학점 게이지는 고정, 그 아래 이수구분 카드/교양영역 표만 내부
                         // 스크롤된다 — 게이지와 카드 사이 간격은 스크롤 밖(고정 영역)에 있어서
                         // 스크롤해도 그대로 유지된다.
-                        GraduationCreditGauge(detail = detail)
+                        GraduationCreditGauge(
+                            detail = detail,
+                            majorEarnedText = majorEarnedText,
+                            minorEarnedText = minorEarnedText,
+                            minorRequiredText = minorRequiredText,
+                            onSelect = { category -> selectedCategory = category }
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         Column(
                             modifier = Modifier
@@ -131,6 +154,11 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
                             GraduationCategoryScrollRow(
                                 rowsByCategory = viewModel.rowsByCategory,
                                 requirements = detail.requirements,
+                                majorRows = majorRows,
+                                majorEarnedText = majorEarnedText,
+                                minorRows = minorRows,
+                                minorEarnedText = minorEarnedText,
+                                minorRequiredText = minorRequiredText,
                                 onSelect = { category -> selectedCategory = category }
                             )
 
@@ -166,12 +194,36 @@ fun GraduationCreditsDialog(onDismiss: () -> Unit) {
 
     val category = selectedCategory
     if (category != null && detail != null) {
-        GraduationCategoryDetailDialog(
-            category = category,
-            requirement = detail.requirements.find { it.label == category },
-            rows = viewModel.rowsByCategory.find { it.first == category }?.second.orEmpty(),
-            onDismiss = { selectedCategory = null }
-        )
+        when (category) {
+            "주전공" -> GraduationCategoryDetailDialog(
+                category = category,
+                requirement = GraduationRequirement(
+                    label = category,
+                    requiredValue = null,
+                    earnedValue = formatCredits(detail.rows.filter { it.category == "전필" || it.category == "전선" }.sumOf { it.credit })
+                ),
+                rows = detail.rows.filter { it.category == "전필" || it.category == "전선" },
+                accentColor = MinorColor,
+                onDismiss = { selectedCategory = null }
+            )
+            "복수전공" -> GraduationCategoryDetailDialog(
+                category = category,
+                requirement = GraduationRequirement(
+                    label = category,
+                    requiredValue = detail.requirements.find { it.label == "복전" }?.requiredValue,
+                    earnedValue = formatCredits(detail.rows.filter { it.category == "복필" || it.category == "복선" }.sumOf { it.credit })
+                ),
+                rows = detail.rows.filter { it.category == "복필" || it.category == "복선" },
+                accentColor = MinorColor,
+                onDismiss = { selectedCategory = null }
+            )
+            else -> GraduationCategoryDetailDialog(
+                category = category,
+                requirement = detail.requirements.find { it.label == category },
+                rows = viewModel.rowsByCategory.find { it.first == category }?.second.orEmpty(),
+                onDismiss = { selectedCategory = null }
+            )
+        }
     }
 }
 
@@ -265,10 +317,18 @@ private fun SkeletonBlock(width: Dp, height: Dp, alpha: Float, shape: Shape = Ro
     )
 }
 
-/** 총 이수학점을 원형 게이지로 보여준다 — 링 안쪽에 취득/기준 학점을, 링 자체는 기준학점 대비
- *  취득 비율을 채워서 시각적으로 보여준다. */
+/** 총 이수학점(주황, 가운데)을 중심으로 왼쪽엔 주전공(전필+전선 합, 주황), 오른쪽엔 복수전공
+ *  (복필+복선 합, 파랑) 취득학점을 작은 원형 게이지로 나란히 붙여서 보여준다 — 양옆 링은 가운데
+ *  링의 60% 크기. 주전공은 기준학점이 복수전공/부전공 여부·학번마다 달라서 표시하지 않고 취득만
+ *  보여준다. 졸업평점은 세 링 아래, 가운데 정렬로 놓는다. */
 @Composable
-private fun GraduationCreditGauge(detail: TranscriptDetail) {
+private fun GraduationCreditGauge(
+    detail: TranscriptDetail,
+    majorEarnedText: String,
+    minorEarnedText: String,
+    minorRequiredText: String?,
+    onSelect: (String) -> Unit
+) {
     val totalReq = detail.requirements.find { it.label == "졸업학점" }
     val gpaReq = detail.requirements.find { it.label == "졸업평점평균" }
     val earnedText = totalReq?.earnedValue ?: formatCredits(detail.rows.sumOf { it.credit })
@@ -278,10 +338,10 @@ private fun GraduationCreditGauge(detail: TranscriptDetail) {
         val requiredValue = requiredText?.toDoubleOrNull()
         if (requiredValue != null && requiredValue > 0) (earnedValue / requiredValue).toFloat().coerceIn(0f, 1f) else 0f
     }
-    // 화면에 들어올 때 0에서 실제 값까지 링이 자연스럽게 채워지도록 애니메이션.
-    val animatedFraction = remember { Animatable(0f) }
-    LaunchedEffect(fraction) {
-        animatedFraction.animateTo(fraction, animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing))
+    val minorFraction = remember(minorEarnedText, minorRequiredText) {
+        val earnedValue = minorEarnedText.toDoubleOrNull() ?: 0.0
+        val requiredValue = minorRequiredText?.toDoubleOrNull()
+        if (requiredValue != null && requiredValue > 0) (earnedValue / requiredValue).toFloat().coerceIn(0f, 1f) else 0f
     }
 
     Column(
@@ -294,42 +354,50 @@ private fun GraduationCreditGauge(detail: TranscriptDetail) {
     ) {
         Text(text = "총 이수학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Spacer(modifier = Modifier.height(14.dp))
-        Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokeWidth = 16.dp.toPx()
-                val diameter = size.minDimension - strokeWidth
-                val arcTopLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-                val arcSize = Size(diameter, diameter)
-                drawArc(
-                    color = Background,
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    topLeft = arcTopLeft,
-                    size = arcSize,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onSelect("주전공") }
+            ) {
+                CreditGaugeRing(
+                    sizeDp = MAJOR_GAUGE_SIZE * MINOR_GAUGE_SCALE,
+                    strokeWidth = MAJOR_GAUGE_STROKE * MINOR_GAUGE_SCALE,
+                    color = MinorColor,
+                    fraction = 0f,
+                    earnedText = majorEarnedText,
+                    requiredText = null,
+                    valueStyle = MaterialTheme.typography.titleMedium,
+                    captionStyle = MaterialTheme.typography.labelSmall
                 )
-                if (animatedFraction.value > 0f) {
-                    drawArc(
-                        color = Primary,
-                        startAngle = -90f,
-                        sweepAngle = 360f * animatedFraction.value,
-                        useCenter = false,
-                        topLeft = arcTopLeft,
-                        size = arcSize,
-                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                    )
-                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "주전공", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = Primary)) { append(earnedText) }
-                        withStyle(SpanStyle(color = TextSecondary)) { append(if (requiredText != null) "/$requiredText" else "") }
-                    },
-                    style = MaterialTheme.typography.titleLarge
+            CreditGaugeRing(
+                sizeDp = MAJOR_GAUGE_SIZE,
+                strokeWidth = MAJOR_GAUGE_STROKE,
+                color = Primary,
+                fraction = fraction,
+                earnedText = earnedText,
+                requiredText = requiredText,
+                valueStyle = MaterialTheme.typography.titleLarge,
+                captionStyle = MaterialTheme.typography.bodySmall
+            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onSelect("복수전공") }
+            ) {
+                CreditGaugeRing(
+                    sizeDp = MAJOR_GAUGE_SIZE * MINOR_GAUGE_SCALE,
+                    strokeWidth = MAJOR_GAUGE_STROKE * MINOR_GAUGE_SCALE,
+                    color = MinorColor,
+                    fraction = minorFraction,
+                    earnedText = minorEarnedText,
+                    requiredText = minorRequiredText,
+                    valueStyle = MaterialTheme.typography.titleMedium,
+                    captionStyle = MaterialTheme.typography.labelSmall
                 )
-                Text(text = "학점", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "복수전공", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
         if (gpaReq?.earnedValue != null) {
@@ -346,6 +414,72 @@ private fun GraduationCreditGauge(detail: TranscriptDetail) {
     }
 }
 
+private val MAJOR_GAUGE_SIZE = 150.dp
+private val MAJOR_GAUGE_STROKE = 16.dp
+private const val MINOR_GAUGE_SCALE = 0.6f
+
+/** 원형 게이지 하나 — 링 자체는 기준학점 대비 취득 비율을 채우고, 안쪽엔 취득/기준 학점을
+ *  텍스트로 보여준다. 주전공/부전공 게이지가 같은 모양을 크기만 다르게 재사용한다. */
+@Composable
+private fun CreditGaugeRing(
+    sizeDp: Dp,
+    strokeWidth: Dp,
+    color: Color,
+    fraction: Float,
+    earnedText: String,
+    requiredText: String?,
+    valueStyle: TextStyle,
+    captionStyle: TextStyle
+) {
+    // 화면에 들어올 때 0에서 실제 값까지 링이 자연스럽게 채워지도록 애니메이션.
+    val animatedFraction = remember { Animatable(0f) }
+    LaunchedEffect(fraction) {
+        animatedFraction.animateTo(fraction, animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing))
+    }
+
+    Box(modifier = Modifier.size(sizeDp), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokePx = strokeWidth.toPx()
+            val diameter = size.minDimension - strokePx
+            val arcTopLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+            val arcSize = Size(diameter, diameter)
+            drawArc(
+                color = Background,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+            if (animatedFraction.value > 0f) {
+                drawArc(
+                    color = color,
+                    startAngle = -90f,
+                    sweepAngle = 360f * animatedFraction.value,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = color)) { append(earnedText) }
+                    withStyle(SpanStyle(color = TextSecondary)) { append(if (requiredText != null) "/$requiredText" else "") }
+                },
+                style = valueStyle
+            )
+            Text(text = "학점", style = captionStyle, color = TextSecondary)
+        }
+    }
+}
+
+// 부전공(복수전공) 전용 강조색 — 주전공 게이지/카드에 쓰는 Primary(주황)와 구분되도록 파란색을 쓴다.
+private val MinorColor = Color(0xFF3B82F6)
+
 // 카드 하나의 너비/높이 — 스크롤 영역 맨 아래 여백(카드 하나 세로폭)에도 그대로 재사용한다.
 private val GraduationCategoryCardWidth = 130.dp
 private val GraduationCategoryCardHeight = 150.dp
@@ -356,6 +490,11 @@ private val GraduationCategoryCardHeight = 150.dp
 private fun GraduationCategoryScrollRow(
     rowsByCategory: List<Pair<String, List<TranscriptCourseRow>>>,
     requirements: List<GraduationRequirement>,
+    majorRows: List<TranscriptCourseRow>,
+    majorEarnedText: String,
+    minorRows: List<TranscriptCourseRow>,
+    minorEarnedText: String,
+    minorRequiredText: String?,
     onSelect: (String) -> Unit
 ) {
     Row(
@@ -368,24 +507,41 @@ private fun GraduationCategoryScrollRow(
             val requirement = requirements.find { it.label == category }
             GraduationCategoryCard(
                 category = category,
-                requirement = requirement,
-                rows = rows,
+                earned = requirement?.earnedValue ?: formatCredits(rows.sumOf { it.credit }),
+                required = requirement?.requiredValue,
+                courseCount = rows.size,
                 onClick = { onSelect(category) }
             )
         }
+        // 주전공/복수전공은 이수구분표에 없는 별도 항목이라 카드 두 개로 맨 뒤에 붙인다.
+        GraduationCategoryCard(
+            category = "주전공",
+            earned = majorEarnedText,
+            required = null,
+            courseCount = majorRows.size,
+            accentColor = MinorColor,
+            onClick = { onSelect("주전공") }
+        )
+        GraduationCategoryCard(
+            category = "복수전공",
+            earned = minorEarnedText,
+            required = minorRequiredText,
+            courseCount = minorRows.size,
+            accentColor = MinorColor,
+            onClick = { onSelect("복수전공") }
+        )
     }
 }
 
 @Composable
 private fun GraduationCategoryCard(
     category: String,
-    requirement: GraduationRequirement?,
-    rows: List<TranscriptCourseRow>,
-    onClick: () -> Unit
+    earned: String,
+    required: String?,
+    courseCount: Int,
+    onClick: () -> Unit,
+    accentColor: Color = Primary
 ) {
-    val earned = requirement?.earnedValue ?: formatCredits(rows.sumOf { it.credit })
-    val required = requirement?.requiredValue
-
     Column(
         modifier = Modifier
             .width(GraduationCategoryCardWidth)
@@ -398,13 +554,13 @@ private fun GraduationCategoryCard(
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = buildAnnotatedString {
-                withStyle(SpanStyle(color = Primary)) { append(earned) }
+                withStyle(SpanStyle(color = accentColor)) { append(earned) }
                 withStyle(SpanStyle(color = TextSecondary)) { append(if (required != null) "/${required}학점" else "학점") }
             },
             style = MaterialTheme.typography.titleMedium
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = "${rows.size}과목", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        Text(text = "${courseCount}과목", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
     }
 }
 
@@ -415,7 +571,8 @@ private fun GraduationCategoryDetailDialog(
     category: String,
     requirement: GraduationRequirement?,
     rows: List<TranscriptCourseRow>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    accentColor: Color = Primary
 ) {
     val earned = requirement?.earnedValue ?: formatCredits(rows.sumOf { it.credit })
     val required = requirement?.requiredValue
@@ -437,7 +594,7 @@ private fun GraduationCategoryDetailDialog(
                 )
                 Text(
                     text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = Primary)) { append(earned) }
+                        withStyle(SpanStyle(color = accentColor)) { append(earned) }
                         withStyle(SpanStyle(color = TextSecondary)) {
                             append(if (required != null) "/${required}학점 · ${rows.size}과목" else "학점 · ${rows.size}과목")
                         }

@@ -307,15 +307,17 @@ class AcademicTranscriptClient(
             .forEach { rowCells ->
                 val sorted = rowCells.sortedBy { it.le }
                 val markerIdxs = sorted.indices.filter { idx ->
-                    FixedCourseCategories.any { code -> sorted[idx].text.startsWith(code) }
+                    TRANSCRIPT_ROW_MARKERS.any { code -> sorted[idx].text.startsWith(code) }
                 }
                 markerIdxs.forEachIndexed { m, start ->
                     val end = if (m + 1 < markerIdxs.size) markerIdxs[m + 1] else sorted.size
                     val group = sorted.subList(start, end).map { it.text }
                     if (group.size < 5) return@forEachIndexed
                     val label = group[0]
-                    val category = FixedCourseCategories.first { label.startsWith(it) }
-                    val subArea = label.takeIf { it != category }
+                    val category = TRANSCRIPT_ROW_MARKERS.first { label.startsWith(it) }
+                    // 복수전공(복필/복선)은 뒤에 붙는 숫자가 교선의 교양영역 같은 의미있는 값이
+                    // 아니라서(그냥 순번), subArea로 남기지 않고 무시한다.
+                    val subArea = if (category == "복필" || category == "복선") null else label.takeIf { it != category }
                     if (group.size >= 6) {
                         rows += TranscriptCourseRow(category, subArea, group[1], group[2], group[3], group[4].toDoubleOrNull() ?: 0.0, group[5])
                     } else {
@@ -405,6 +407,11 @@ class AcademicTranscriptClient(
         .replace("&amp;", "&")
 
     companion object {
+        // 과목 표 파싱 전용 마커 목록 — [FixedCourseCategories]는 시간표 과목 검색 필터 등
+        // 다른 화면에서도 공유해서 쓰므로 거기엔 손대지 않고, 복수전공(복필/복선) 과목 인식은
+        // 여기(이수구분표 파싱)에서만 추가로 알아본다.
+        private val TRANSCRIPT_ROW_MARKERS = FixedCourseCategories + listOf("복필", "복선")
+
         private const val VIEWER_URL = "https://dreams2.daejin.ac.kr/sugang/sugang_wlsn0555.jsp"
         private const val ORG_CD = "ZjzT1v9Ax6ybAbmfZIWOsA%3D%3D"
         private const val REPORT_URL = "https://dreams2.daejin.ac.kr/ReportingServer/service"
